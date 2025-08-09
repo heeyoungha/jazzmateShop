@@ -4,9 +4,11 @@ import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
 import { ImageWithFallback } from "../components/figma/ImageWithFallback";
 import { Heart, MapPin, TrendingUp, BookOpen, PenTool, User, Sparkles, Star, Calendar } from "lucide-react";
+import { useNavigate } from 'react-router-dom';
 
 export default function MainPage() {
-  const renderStars = (rating: number) => {
+    const navigate = useNavigate();
+    const renderStars = (rating: number) => {
     const fullStars = Math.floor(rating);
     const hasHalfStar = rating % 1 !== 0;
     
@@ -26,6 +28,10 @@ export default function MainPage() {
     );
   };
 
+  const handleCriticsClick = () => {
+    navigate('/critics');
+  };
+
   const features = [
     {
       icon: Heart,
@@ -33,7 +39,8 @@ export default function MainPage() {
       description: "좋아하는 재즈 곡에 대한 상세한 감상을 기록하고 공유하세요. 보컬, 연주자, 작곡가 정보부터 추천 테마, 느낌까지 세심하게 담아낼 수 있습니다.",
       color: "text-red-500",
       gradient: "from-red-50 to-pink-50 dark:from-red-950/20 dark:to-pink-950/20",
-      example: "Kind of Blue를 들으며 느낀 그 깊은 감동을 기록하고 싶어요"
+      example: "Kind of Blue를 들으며 느낀 그 깊은 감동을 기록하고 싶어요",
+      onClick: null,
     },
     {
       icon: TrendingUp,
@@ -41,7 +48,8 @@ export default function MainPage() {
       description: "당신의 감상 패턴과 취향을 분석한 AI 알고리즘이 매달 새로운 앨범과 트랙을 추천합니다. 당신만을 위한 재즈 발견의 여정을 시작하세요.",
       color: "text-purple-500",
       gradient: "from-purple-50 to-indigo-50 dark:from-purple-950/20 dark:to-indigo-950/20",
-      example: "당신이 좋아할 만한 숨겨진 재즈 명반들을 발견해보세요"
+      example: "당신이 좋아할 만한 숨겨진 재즈 명반들을 발견해보세요",
+      onClick: null,
     },
     {
       icon: BookOpen,
@@ -49,7 +57,8 @@ export default function MainPage() {
       description: "재즈 전문가들의 최신 앨범 리뷰를 확인해보세요. 클래식의 현대적 해석부터 새로운 발견까지 전문가의 시각을 만나보세요.",
       color: "text-blue-500",
       gradient: "from-blue-50 to-cyan-50 dark:from-blue-950/20 dark:to-cyan-950/20",
-      example: "Miles Davis의 Kind of Blue 재해석"
+      example: "Miles Davis의 Kind of Blue 재해석",
+      onClick: handleCriticsClick,
     }
   ];
 
@@ -104,7 +113,12 @@ export default function MainPage() {
           {features.map((feature, index) => {
             const Icon = feature.icon;
             return (
-              <Card key={index} className="relative overflow-hidden border-2 hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
+              <Card 
+                key={index} 
+                className="relative overflow-hidden border-2 hover:shadow-xl transition-all duration-300 hover:-translate-y-1"
+                onClick={feature.onClick || undefined}
+                >
+                
                 <div className={`absolute inset-0 bg-gradient-to-br ${feature.gradient} opacity-50`} />
                 <CardHeader className="relative">
                   <div className={`inline-flex p-3 rounded-xl bg-white dark:bg-card mb-4 ${feature.color}`}>
