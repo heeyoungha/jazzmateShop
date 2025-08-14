@@ -1,0 +1,8 @@
+fastapi==0.104.1
+uvicorn==0.24.0
+python-dotenv==1.0.0
+qdrant-client==1.7.0
+huggingface-hub==0.19.4
+supabase==2.3.0
+numpy==1.24.3
+requests==2.31.0

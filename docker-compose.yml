@@ -1,0 +1,35 @@
+services:
+  java-backend:
+    build: ./backend
+    ports:
+      - '8080:8080'
+    env_file:
+      - ./backend/.env
+    volumes:
+      - ./backend:/app
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+    command: ./gradlew bootRun
+  
+  ai-api:
+    build: ./backend/ai-service
+    ports:
+      - '8000:8000'
+    env_file:
+      - ./backend/.env
+    depends_on:
+      - java-backend
+    volumes:
+      - ./backend/ai-service:/app
+    command: python api_server.py
+
+  frontend:
+    build: ./frontend
+    ports:
+      - '3000:3000'
+    depends_on:
+      - java-backend
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    command: npm run dev

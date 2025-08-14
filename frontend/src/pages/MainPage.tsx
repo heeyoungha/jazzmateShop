@@ -32,6 +32,14 @@ export default function MainPage() {
     navigate('/critics');
   };
 
+  const handleRecommendClick = () => {
+    navigate('/recommend');
+  };
+
+  const handleWriteReviewClick = () => {
+    navigate('/write-review');
+  };
+
   const features = [
     {
       icon: Heart,
@@ -40,7 +48,7 @@ export default function MainPage() {
       color: "text-red-500",
       gradient: "from-red-50 to-pink-50 dark:from-red-950/20 dark:to-pink-950/20",
       example: "Kind of Blue를 들으며 느낀 그 깊은 감동을 기록하고 싶어요",
-      onClick: null,
+      onClick: handleWriteReviewClick,
     },
     {
       icon: TrendingUp,
@@ -49,7 +57,7 @@ export default function MainPage() {
       color: "text-purple-500",
       gradient: "from-purple-50 to-indigo-50 dark:from-purple-950/20 dark:to-indigo-950/20",
       example: "당신이 좋아할 만한 숨겨진 재즈 명반들을 발견해보세요",
-      onClick: null,
+      onClick: handleRecommendClick,
     },
     {
       icon: BookOpen,
@@ -85,7 +93,7 @@ export default function MainPage() {
                 감상을 기록하고, 공연을 공유하고, AI가 추천하는 새로운 음악을 만나보세요.<br />
                 재즈 팬들의 커뮤니티에서 함께 성장하는 음악 여정이 시작됩니다.
               </p>
-              <div className="flex gap-4 justify-center">
+              {/* <div className="flex gap-4 justify-center">
                 <Button size="lg" className="bg-white text-black hover:bg-white/90 px-8 py-3">
                   <Heart className="mr-2 h-5 w-5" />
                   감상문 시작하기
@@ -94,7 +102,7 @@ export default function MainPage() {
                   <MapPin className="mr-2 h-5 w-5" />
                   재즈 스팟 둘러보기
                 </Button>
-              </div>
+              </div> */}
             </div>
           </div>
         </div>

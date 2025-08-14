@@ -13,19 +13,14 @@ spring:
       maximum-pool-size: 5
       minimum-idle: 1
       connection-timeout: 30000
-      read-only: true
 
   jpa:
     hibernate:
-      ddl-auto: validate  # 스키마 검증만
+      ddl-auto: update
     properties:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
-        # 읽기 전용 설정
-        connection.provider_disables_autocommit: true
-    show-sql: true
-    # 읽기 전용 설정
-    open-in-view: false
+
 
 # 로깅 설정 - 간단하게
 logging:

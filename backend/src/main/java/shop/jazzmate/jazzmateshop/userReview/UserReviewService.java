@@ -4,16 +4,31 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.beans.factory.annotation.Value;
 import shop.jazzmate.jazzmateshop.userReview.dto.UserReviewRequest;
 import shop.jazzmate.jazzmateshop.userReview.dto.UserReviewResponse;
 import shop.jazzmate.jazzmateshop.userReview.entity.UserReview;
 import shop.jazzmate.jazzmateshop.userReview.entity.RecommendTrack;
 import shop.jazzmate.jazzmateshop.userReview.entity.Track;
+import shop.jazzmate.jazzmateshop.userReview.RecommendTrackRepository;
 
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.stream.Collectors;
 import java.util.Optional;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.io.IOException;
+import org.springframework.scheduling.annotation.Async;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.net.URI;
+import java.time.Duration;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.JsonNode;
+import java.util.Map;
+import java.util.HashMap;
 
 @Service
 @RequiredArgsConstructor
@@ -22,6 +37,8 @@ public class UserReviewService {
     
     private final UserReviewRepository userReviewRepository;
     private final RecommendTrackRepository recommendTrackRepository;
+    @Value("${ai.service.url:http://jazzmateshop-ai-api-1:8000}")
+    private String aiServiceUrl;
     private final TrackRepository trackRepository;
     
     /**
@@ -166,21 +183,58 @@ public class UserReviewService {
             throw new RuntimeException("감상문 삭제 중 오류가 발생했습니다: " + e.getMessage());
         }
     }
-    
+
     /**
      * 특정 감상문의 추천 결과 조회
      */
     public List<RecommendTrack> getRecommendationsByReviewId(Integer reviewId) {
-        return recommendTrackRepository.findByUserReviewIdOrderByScoreDesc(reviewId);
+        return recommendTrackRepository.findByUserReviewId(reviewId);
     }
     
     /**
-     * 특정 감상문의 기존 추천 결과 삭제
+     * FastAPI 서버를 호출하여 추천 생성 (비동기)
      */
-    @Transactional
-    public void deleteRecommendationsByReviewId(Integer reviewId) {
-        recommendTrackRepository.deleteByUserReviewId(reviewId);
-        log.info("기존 추천 결과 삭제 완료: review_id={}", reviewId);
+    @Async
+    public void generateRecommendationsForReview(Integer reviewId, String reviewText) {
+        try {
+            log.info("추천 생성 시작: review_id={}", reviewId);
+            
+            // HTTP 클라이언트 생성
+            HttpClient client = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(30))
+                .build();
+            
+            // 요청 데이터 생성
+            ObjectMapper objectMapper = new ObjectMapper();
+            Map<String, Object> requestData = new HashMap<>();
+            requestData.put("review_text", reviewText);
+            requestData.put("review_id", reviewId);
+            requestData.put("limit", 3);
+            
+            String requestBody = objectMapper.writeValueAsString(requestData);
+            
+            // HTTP 요청 생성
+            HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(aiServiceUrl + "/recommend/by-review"))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(requestBody))
+                .timeout(Duration.ofSeconds(60))
+                .build();
+            
+            // 요청 전송
+            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+            
+            if (response.statusCode() == 200) {
+                log.info("추천 생성 완료: review_id={}", reviewId);
+                log.info("FastAPI 응답: {}", response.body());
+            } else {
+                log.error("추천 생성 실패: review_id={}, statusCode={}, response={}", 
+                    reviewId, response.statusCode(), response.body());
+            }
+            
+        } catch (Exception e) {
+            log.error("추천 생성 오류: review_id={}, error={}", reviewId, e.getMessage());
+        }
     }
     
     /**
