@@ -67,7 +67,8 @@ const CriticsReviewPage: React.FC = () => {
   const fetchReviews = async (pageNum: number = 0) => {
     try {
       setLoading(true);
-      const response = await fetch(`http://localhost:8080/api/critics?page=${pageNum}&size=10`);
+      const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080';
+      const response = await fetch(`${API_BASE_URL}/api/critics?page=${pageNum}&size=10`);
       const data: ReviewPageData = await response.json();
       
       if (pageNum === 0) {

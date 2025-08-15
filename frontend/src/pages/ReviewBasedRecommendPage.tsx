@@ -64,7 +64,8 @@ const ReviewBasedRecommendPage: React.FC = () => {
       setIsLoading(true);
       
       // 감상문과 추천 결과를 한 번에 가져오기
-      const response = await fetch(`http://localhost:8080/api/user-reviews/${reviewId}`);
+      const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080';
+      const response = await fetch(`${API_BASE_URL}/api/user-reviews/${reviewId}`);
       if (!response.ok) {
         throw new Error('감상문을 찾을 수 없습니다.');
       }
@@ -77,7 +78,7 @@ const ReviewBasedRecommendPage: React.FC = () => {
         const formattedRecommendations = await Promise.all(
           data.recommendations.map(async (rec: any) => {
             // Track 정보 조회
-            const trackResponse = await fetch(`http://localhost:8080/api/tracks/${rec.trackId}`);
+            const trackResponse = await fetch(`${API_BASE_URL}/api/tracks/${rec.trackId}`);
             const trackData = trackResponse.ok ? await trackResponse.json() : null;
             
             return {

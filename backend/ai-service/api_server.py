@@ -14,9 +14,13 @@ sys.path.append('/app')
 app = FastAPI(title="JazzMate AI Recommendation API", version="1.0.0")
 
 # CORS 설정
+# CORS 설정
+allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:3001,http://localhost:3000").split(",")
+allowed_origins = [origin.strip() for origin in allowed_origins]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3001", "http://localhost:3000"],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
