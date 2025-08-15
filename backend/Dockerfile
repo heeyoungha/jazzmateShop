@@ -4,6 +4,9 @@ FROM openjdk:17-jdk-slim
 # 작업 디렉토리 설정
 WORKDIR /app
 
+# curl 설치
+RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
+
 # Gradle Wrapper 디렉토리 생성 및 파일 다운로드
 RUN mkdir -p gradle/wrapper
 RUN curl -L https://github.com/gradle/gradle/raw/v7.6.3/gradle/wrapper/gradle-wrapper.jar -o gradle/wrapper/gradle-wrapper.jar
