@@ -4,9 +4,13 @@ FROM openjdk:17-jdk-slim
 # 작업 디렉토리 설정
 WORKDIR /app
 
+# Gradle Wrapper 디렉토리 생성 및 파일 다운로드
+RUN mkdir -p gradle/wrapper
+RUN curl -L https://github.com/gradle/gradle/raw/v7.6.3/gradle/wrapper/gradle-wrapper.jar -o gradle/wrapper/gradle-wrapper.jar
+RUN curl -L https://github.com/gradle/gradle/raw/v7.6.3/gradle/wrapper/gradle-wrapper.properties -o gradle/wrapper/gradle-wrapper.properties
+
 # Gradle Wrapper와 설정 파일들 복사
 COPY gradlew .
-COPY gradle gradle
 COPY build.gradle .
 COPY settings.gradle .
 
