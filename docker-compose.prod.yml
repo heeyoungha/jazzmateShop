@@ -1,0 +1,60 @@
+# 운영환경용 Docker Compose (actlog.shop)
+# 사용법: docker-compose -f docker-compose.prod.yml up -d
+
+services:
+  java-backend:
+    build: ./backend
+    ports:
+      - '8080:8080'
+    env_file:
+      - ./backend/.env
+    volumes:
+      - ./backend:/app
+    environment:
+      - SPRING_PROFILES_ACTIVE=production
+      - AI_SERVICE_URL=${AI_SERVICE_URL:-http://ai-api:8000}
+    command: ./gradlew bootRun
+    restart: unless-stopped
+  
+  ai-api:
+    build: ./backend/ai-service
+    ports:
+      - '8000:8000'
+    env_file:
+      - ./backend/.env
+    depends_on:
+      - java-backend
+    volumes:
+      - ./backend/ai-service:/app
+    environment:
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-https://actlog.shop}
+    command: python api_server.py
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    ports:
+      - '3000:3000'
+    depends_on:
+      - java-backend
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      - VITE_API_URL=${VITE_API_URL:-https://actlog.shop}
+    command: npm run dev
+    restart: unless-stopped
+
+  # Nginx 리버스 프록시 (선택사항)
+  nginx:
+    image: nginx:alpine
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - frontend
+      - java-backend
+    restart: unless-stopped
