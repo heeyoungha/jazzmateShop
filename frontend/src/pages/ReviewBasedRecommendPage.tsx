@@ -78,7 +78,8 @@ const ReviewBasedRecommendPage: React.FC = () => {
         const formattedRecommendations = await Promise.all(
           data.recommendations.map(async (rec: any) => {
             // Track 정보 조회
-            const trackResponse = await fetch(`${API_BASE_URL}/api/tracks/${rec.trackId}`);
+            const apiUrl = getApiUrl();
+            const trackResponse = await fetch(`${apiUrl}/tracks/${rec.trackId}`);
             const trackData = trackResponse.ok ? await trackResponse.json() : null;
             
             return {
