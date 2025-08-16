@@ -1,27 +1,17 @@
 services:
   java-backend:
-    build: ./backend
+    image: jazzmate-backend:latest
     ports:
       - '8080:8080'
     env_file:
       - ./backend/.env
-    volumes:
-      - ./backend:/app
     environment:
       - SPRING_PROFILES_ACTIVE=production
       - AI_SERVICE_URL=${AI_SERVICE_URL:-http://ai-api:8000}
-      - JAVA_OPTS=-Xmx256m -XX:MaxMetaspaceSize=128m
-    command: ./gradlew bootRun
     restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          memory: 512M
-        reservations:
-          memory: 256M
   
   ai-api:
-    build: ./backend/ai-service
+    image: jazzmate-ai-api:latest
     ports:
       - '8000:8000'
     env_file:
@@ -36,17 +26,11 @@ services:
     restart: unless-stopped
 
   frontend:
-    build: ./frontend
+    image: jazzmate-frontend:latest
     ports:
       - '3000:3000'
     depends_on:
       - java-backend
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
-    environment:
-      - VITE_API_URL=${VITE_API_URL:-https://actlog.shop}
-    command: npm run dev -- --host 0.0.0.0
     restart: unless-stopped
 
   # Nginx 리버스 프록시 (선택사항)
