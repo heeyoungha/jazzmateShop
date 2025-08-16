@@ -11,22 +11,19 @@ services:
     restart: unless-stopped
   
   ai-api:
-    image: jazzmate-ai-api:latest
+    image: jazzmateshop-ai-api:latest
     ports:
       - '8000:8000'
     env_file:
       - ./backend/.env
     depends_on:
       - java-backend
-    volumes:
-      - ./backend/ai-service:/app
     environment:
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-https://actlog.shop}
-    command: python api_server.py
     restart: unless-stopped
 
   frontend:
-    image: jazzmate-frontend:latest
+    image: jazzmateshop-frontend:latest
     ports:
       - '3000:3000'
     depends_on:
