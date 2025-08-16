@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Loader2, Music, Star, ArrowLeft, Heart, Play } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { getApiUrl } from '@/lib/api';
 
 interface Recommendation {
   pointId: string;
@@ -63,9 +64,8 @@ const ReviewBasedRecommendPage: React.FC = () => {
     try {
       setIsLoading(true);
       
-      // 감상문과 추천 결과를 한 번에 가져오기
-      const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080';
-      const response = await fetch(`${API_BASE_URL}/api/user-reviews/${reviewId}`);
+      const apiUrl = getApiUrl();
+      const response = await fetch(`${apiUrl}/user-reviews/${reviewId}`);
       if (!response.ok) {
         throw new Error('감상문을 찾을 수 없습니다.');
       }

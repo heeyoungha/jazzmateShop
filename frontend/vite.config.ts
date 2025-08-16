@@ -8,6 +8,9 @@ const sslKeyPath = path.resolve(__dirname, './ssl/privkey.pem')
 const sslCertPath = path.resolve(__dirname, './ssl/fullchain.pem')
 const hasSSL = fs.existsSync(sslKeyPath) && fs.existsSync(sslCertPath)
 
+// 운영 환경 여부 확인 (nginx가 있는 경우)
+const isProduction = process.env.NODE_ENV === 'production' || hasSSL
+
 export default defineConfig({
   plugins: [react()],
   resolve: {
@@ -37,16 +40,19 @@ export default defineConfig({
       clientPort: 3000,
       ...(hasSSL && { protocol: 'wss' })
     },
-    proxy: {
-      '/api': {
-        target: 'http://java-backend:8080', 
-        changeOrigin: true
-      },
-      '/ai': {
-        target: 'http://ai-api:8000',
-        changeOrigin: true
+    // 개발 환경에서만 프록시 사용 (운영에서는 nginx가 처리)
+    ...(isProduction ? {} : {
+      proxy: {
+        '/api': {
+          target: 'http://java-backend:8080', 
+          changeOrigin: true
+        },
+        '/ai': {
+          target: 'http://ai-api:8000',
+          changeOrigin: true
+        }
       }
-    }
+    })
   },
   build: {
     outDir: 'dist',

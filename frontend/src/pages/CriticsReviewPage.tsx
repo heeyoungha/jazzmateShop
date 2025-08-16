@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { ChevronLeft, Calendar, User } from 'lucide-react';
+import { getApiUrl } from '@/lib/api';
 
 interface CriticsReview {
   id: number;
@@ -67,8 +68,8 @@ const CriticsReviewPage: React.FC = () => {
   const fetchReviews = async (pageNum: number = 0) => {
     try {
       setLoading(true);
-      const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080';
-      const response = await fetch(`${API_BASE_URL}/api/critics?page=${pageNum}&size=10`);
+      const apiUrl = getApiUrl();
+      const response = await fetch(`${apiUrl}/critics?page=${pageNum}&size=10`);
       const data: ReviewPageData = await response.json();
       
       if (pageNum === 0) {
