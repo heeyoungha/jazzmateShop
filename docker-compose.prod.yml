@@ -11,7 +11,7 @@ services:
     restart: unless-stopped
   
   ai-api:
-    image: jazzmateshop-ai-api:latest
+    image: jazzmate-ai-api:latest
     ports:
       - '8000:8000'
     env_file:
@@ -25,7 +25,7 @@ services:
   frontend:
     image: jazzmateshop-frontend:latest
     ports:
-      - '3000:3000'
+      - '3000:80'
     depends_on:
       - java-backend
     restart: unless-stopped
