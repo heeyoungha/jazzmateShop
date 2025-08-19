@@ -85,18 +85,7 @@ public class UserReviewController {
             
             // 추천 결과 조회
             List<RecommendTrack> recommendations = userReviewService.getRecommendationsByReviewId(id);
-            
-            // 추천 결과가 없으면 자동으로 생성 (비동기)
-            if (recommendations.isEmpty()) {
-                try {
-                    log.info("추천 결과가 없어서 자동 생성 시작: review_id={}", id);
-                    userReviewService.generateRecommendationsForReview(id, review.getReviewContent());
-                    log.info("추천 자동 생성 요청 완료: review_id={} (비동기 처리 중)", id);
-                } catch (Exception e) {
-                    log.error("추천 자동 생성 실패: review_id={}, error={}", id, e.getMessage());
-                }
-            }
-            
+          
             // 통합 응답 생성
             UserReviewWithRecommendationsResponse response = UserReviewWithRecommendationsResponse.builder()
                 .id(review.getId())

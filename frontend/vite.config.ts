@@ -10,6 +10,7 @@ const hasSSL = fs.existsSync(sslKeyPath) && fs.existsSync(sslCertPath)
 
 // 운영 환경 여부 확인 (nginx가 있는 경우)
 const isProduction = process.env.NODE_ENV === 'production' || hasSSL
+const isDocker = process.env.VITE_DOCKER === 'true'
 
 export default defineConfig({
   plugins: [react()],
@@ -40,16 +41,20 @@ export default defineConfig({
       clientPort: 3000,
       ...(hasSSL && { protocol: 'wss' })
     },
-    // 개발 환경에서만 프록시 사용 (운영에서는 nginx가 처리)
+    // 프록시 설정
+    // 운영 환경에서는 nginx가 프록시를 처리하므로 Vite 프록시 비활성화
+    // Docker 환경에서는 Docker 서비스 이름 사용, 로컬 개발 환경에서는 localhost 사용
     ...(isProduction ? {} : {
       proxy: {
         '/api': {
-          target: 'http://java-backend:8080', 
-          changeOrigin: true
+          target: isDocker ? 'http://java-backend:8080' : (process.env.VITE_API_URL || 'http://localhost:8080'), 
+          changeOrigin: true,
+          // rewrite 제거: 백엔드는 이미 /api 경로를 포함하고 있음
         },
-        '/ai': {
-          target: 'http://ai-api:8000',
-          changeOrigin: true
+        '/ai-api': {
+          target: isDocker ? 'http://ai-api:8000' : (process.env.VITE_AI_SERVICE_URL || 'http://localhost:8000'),
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/ai-api/, '')
         }
       }
     })

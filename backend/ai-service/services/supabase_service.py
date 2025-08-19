@@ -47,6 +47,30 @@ class SupabaseService:
             print(f"❌ 데이터 조회 실패: {e}")
             return []
     
+    async def check_track_exists(self, track_id: int) -> bool:
+        """Track이 존재하는지 확인"""
+        if not self.client:
+            raise RuntimeError("Supabase에 연결되지 않았습니다")
+        
+        try:
+            response = self.client.table("track").select("id").eq("id", track_id).execute()
+            return len(response.data) > 0
+        except Exception as e:
+            print(f"❌ Track 존재 확인 실패: {e}")
+            return False
+    
+    async def save_recommend_track(self, recommend_data: Dict[str, Any]) -> bool:
+        """RecommendTrack 저장"""
+        if not self.client:
+            raise RuntimeError("Supabase에 연결되지 않았습니다")
+        
+        try:
+            response = self.client.table("recommend_track").insert(recommend_data).execute()
+            return len(response.data) > 0
+        except Exception as e:
+            print(f"❌ RecommendTrack 저장 실패: {e}")
+            return False
+    
     async def disconnect(self):
         """연결 해제"""
         self.client = None

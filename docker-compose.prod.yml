@@ -9,6 +9,8 @@ services:
       - SPRING_PROFILES_ACTIVE=production
       - AI_SERVICE_URL=${AI_SERVICE_URL:-http://ai-api:8000}
     restart: unless-stopped
+    networks:
+      - jazzmate-network
   
   ai-api:
     image: jazzmate-ai-api:latest
@@ -21,6 +23,8 @@ services:
     environment:
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-https://actlog.shop}
     restart: unless-stopped
+    networks:
+      - jazzmate-network
 
   frontend:
     image: jazzmateshop-frontend:latest
@@ -29,6 +33,8 @@ services:
     depends_on:
       - java-backend
     restart: unless-stopped
+    networks:
+      - jazzmate-network
 
   # Nginx 리버스 프록시 (선택사항)
   nginx:
@@ -43,3 +49,9 @@ services:
       - frontend
       - java-backend
     restart: unless-stopped
+    networks:
+      - jazzmate-network
+
+networks:
+  jazzmate-network:
+    driver: bridge

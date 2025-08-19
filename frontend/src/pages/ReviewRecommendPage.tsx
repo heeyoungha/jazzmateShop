@@ -5,6 +5,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Loader2, Music, Star, User } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { getApiUrl } from '@/lib/api';
 
 interface Recommendation {
   point_id: string;
@@ -38,7 +39,8 @@ const ReviewRecommendPage: React.FC = () => {
     setRecommendations([]);
 
     try {
-      const response = await fetch('/api/recommend/by-review', {
+      const apiUrl = getApiUrl();
+      const response = await fetch(`${apiUrl}/recommend/by-review`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -234,3 +236,5 @@ const ReviewRecommendPage: React.FC = () => {
 };
 
 export default ReviewRecommendPage;
+
+

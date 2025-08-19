@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Loader2, Music, Star, ArrowLeft, Heart, Play } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { getApiUrl } from '@/lib/api';
+import { getApiUrl, getAiServiceUrl } from '@/lib/api';
 
 interface Recommendation {
   pointId: string;
@@ -43,20 +43,66 @@ const ReviewBasedRecommendPage: React.FC = () => {
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isGenerating, setIsGenerating] = useState(false); // 추천 생성 중 플래그
+  const [hasTriedGeneration, setHasTriedGeneration] = useState(false); // 추천 생성 시도 여부
 
   useEffect(() => {
     if (reviewId) {
+      // reviewId가 변경되면 상태 초기화
+      setHasTriedGeneration(false);
+      setIsGenerating(false);
       fetchReviewAndRecommendations();
     }
   }, [reviewId]);
 
   const generateNewRecommendations = async (reviewContent: string, reviewId: string) => {
+    // 이미 생성 중이거나 시도했다면 중단
+    if (isGenerating || hasTriedGeneration) {
+      console.log('추천 생성이 이미 진행 중이거나 시도되었습니다.');
+      return;
+    }
+
     try {
-      console.log('추천 결과가 없습니다. 잠시 후 다시 시도해주세요.');
-      setError('추천 결과가 아직 생성되지 않았습니다. 잠시 후 다시 시도해주세요.');
+      setIsGenerating(true);
+      setIsLoading(true);
+      setError(null);
+      
+      // 파이썬 AI 서비스로 직접 요청
+      const aiServiceUrl = getAiServiceUrl();
+      const response = await fetch(`${aiServiceUrl}/recommend/by-review`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          review_text: reviewContent,
+          review_id: parseInt(reviewId),
+          limit: 3
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('AI 서비스 응답 오류:', errorText);
+        throw new Error('추천 생성에 실패했습니다.');
+      }
+
+      const data = await response.json();
+      console.log('추천 생성 완료:', data);
+      
+      // 추천 생성 시도 완료 표시
+      setHasTriedGeneration(true);
+      
+      // 추천 생성 완료 후 다시 감상문과 추천 결과를 조회
+      await fetchReviewAndRecommendations();
+      
     } catch (err) {
       console.error('추천 생성 오류:', err);
-      setError('추천 생성 중 오류가 발생했습니다.');
+      setError(err instanceof Error ? err.message : '추천 생성 중 오류가 발생했습니다.');
+      setHasTriedGeneration(true); // 에러가 발생해도 시도 완료로 표시
+    } finally {
+      setIsGenerating(false);
+      setIsLoading(false);
     }
   };
 
@@ -74,7 +120,7 @@ const ReviewBasedRecommendPage: React.FC = () => {
       setReview(data);
       
       // 추천 결과가 있으면 표시
-      if (data.hasRecommendations && data.recommendations.length > 0) {
+      if (data.hasRecommendations && data.recommendations && data.recommendations.length > 0) {
         const formattedRecommendations = await Promise.all(
           data.recommendations.map(async (rec: any) => {
             // Track 정보 조회
@@ -101,9 +147,17 @@ const ReviewBasedRecommendPage: React.FC = () => {
         );
         setRecommendations(formattedRecommendations);
       } else {
-        // 추천 결과가 없으면 로딩 상태 유지
-        console.log('추천 결과가 아직 생성되지 않았습니다.');
-        setRecommendations([]);
+        // 추천 결과가 없고, 아직 생성 시도를 하지 않았다면 자동으로 생성
+        if (!hasTriedGeneration && !isGenerating) {
+          console.log('추천 결과가 없습니다. 추천을 생성합니다.');
+          setRecommendations([]);
+          
+          // data에서 직접 reviewContent를 사용
+          await generateNewRecommendations(data.reviewContent, reviewId!);
+        } else {
+          // 이미 시도했거나 생성 중이면 빈 목록만 표시
+          setRecommendations([]);
+        }
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : '오류가 발생했습니다.');
@@ -220,8 +274,8 @@ const ReviewBasedRecommendPage: React.FC = () => {
               <Card>
                 <CardContent className="text-center py-8">
                   <Music className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                  <p className="text-gray-500 mb-2">추천 결과가 아직 생성되지 않았습니다.</p>
-                  <p className="text-sm text-gray-400">감상문 작성 후 잠시 기다려주세요.</p>
+                  <p className="text-gray-500 mb-4">추천 결과를 생성하고 있습니다...</p>
+                  <p className="text-sm text-gray-400">잠시만 기다려주세요.</p>
                 </CardContent>
               </Card>
             ) : (

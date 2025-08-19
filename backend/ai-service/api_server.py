@@ -64,11 +64,45 @@ async def recommend_by_review(request: dict):
             print(f"✅ 추천 생성 완료: review_id={review_id}")
             print(f"📤 Python 출력: {result.stdout}")
             
-            return {
-                "success": True,
-                "message": f"추천이 성공적으로 생성되었습니다. (review_id: {review_id})",
-                "review_id": review_id
-            }
+            # Python 스크립트 출력에서 JSON 결과 파싱
+            try:
+                import json
+                import re
+                
+                # JSON 부분만 추출 (마지막 { ... } 패턴)
+                json_match = re.search(r'\{.*\}', result.stdout, re.DOTALL)
+                if json_match:
+                    json_str = json_match.group()
+                    python_result = json.loads(json_str)
+                    
+                    if python_result.get("success") and "recommendations" in python_result:
+                        print(f"📊 추천 결과 파싱 성공: {len(python_result['recommendations'])}개")
+                        return python_result
+                    else:
+                        print(f"⚠️ Python 결과에 추천 데이터 없음: {python_result}")
+                        return {
+                            "success": True,
+                            "message": f"추천이 성공적으로 생성되었습니다. (review_id: {review_id})",
+                            "review_id": review_id,
+                            "recommendations": []
+                        }
+                else:
+                    print(f"⚠️ JSON 파싱 실패: {result.stdout}")
+                    return {
+                        "success": True,
+                        "message": f"추천이 성공적으로 생성되었습니다. (review_id: {review_id})",
+                        "review_id": review_id,
+                        "recommendations": []
+                    }
+                    
+            except Exception as parse_error:
+                print(f"❌ JSON 파싱 오류: {parse_error}")
+                return {
+                    "success": True,
+                    "message": f"추천이 성공적으로 생성되었습니다. (review_id: {review_id})",
+                    "review_id": review_id,
+                    "recommendations": []
+                }
         else:
             print(f"❌ 추천 생성 실패: review_id={review_id}")
             print(f"📤 Python 오류: {result.stderr}")

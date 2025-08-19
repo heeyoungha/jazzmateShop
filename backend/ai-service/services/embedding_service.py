@@ -22,8 +22,7 @@ class EmbeddingService:
             
         try:
             self.client = InferenceClient(
-                # provider="sambanova",  # 또는 다른 provider
-                api_key=api_key
+                token=api_key
             )
             print("✅ Hugging Face 임베딩 서비스 초기화 완료")
         except Exception as e:
@@ -39,16 +38,40 @@ class EmbeddingService:
             return None
             
         try:
-            # 텍스트 생성
+            import requests
+            
             text = self._create_text(track_data)
             
-            # 임베딩 생성
-            result = client.feature_extraction(
-                text,
-                model="intfloat/multilingual-e5-large",  # 이 모델로 변경
+            # E5 모델은 특별한 프롬프트 형식 필요
+            if not text.startswith("query: ") and not text.startswith("passage: "):
+                text = f"query: {text}"
+            
+            # 직접 API 호출 시도
+            api_key = os.getenv('HF_TOKEN')
+            headers = {"Authorization": f"Bearer {api_key}"}
+            
+            # Inference API 엔드포인트
+            api_url = "https://api-inference.huggingface.co/models/intfloat/multilingual-e5-large"
+            
+            response = requests.post(
+                api_url,
+                headers=headers,
+                json={"inputs": text},
+                timeout=30
             )
             
-            return result.tolist()  # numpy array를 list로 변환
+            response.raise_for_status()
+            result = response.json()
+            
+            # 결과가 리스트인 경우
+            if isinstance(result, list):
+                # E5 모델은 보통 첫 번째 요소가 임베딩 벡터
+                if len(result) > 0 and isinstance(result[0], list):
+                    return result[0]
+                return result
+            
+            return result
+        
             
         except Exception as e:
             error_msg = f"임베딩 생성 실패: {str(e)}"

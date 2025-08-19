@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Loader2, Music, Star, ArrowLeft, Heart } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { getApiUrl } from '@/lib/api';
 
 interface UserReview {
   id: number;
@@ -29,7 +30,8 @@ const MyReviewsPage: React.FC = () => {
   const fetchUserReviews = async () => {
     try {
       setIsLoading(true);
-      const response = await fetch('/api/user-reviews');
+      const apiUrl = getApiUrl();
+      const response = await fetch(`${apiUrl}/user-reviews`);
       
       if (response.ok) {
         const data = await response.json();

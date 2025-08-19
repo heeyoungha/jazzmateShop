@@ -37,7 +37,7 @@ public class UserReviewService {
     
     private final UserReviewRepository userReviewRepository;
     private final RecommendTrackRepository recommendTrackRepository;
-    @Value("${ai.service.url:http://jazzmateshop-ai-api-1:8000}")
+    @Value("${AI_SERVICE_URL:http://ai-api:8000}")
     private String aiServiceUrl;
     private final TrackRepository trackRepository;
     

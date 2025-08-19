@@ -7,6 +7,7 @@ import org.springframework.web.bind.annotation.*;
 import shop.jazzmate.jazzmateshop.userReview.entity.RecommendTrack;
 
 import java.time.LocalDateTime;
+import java.util.Optional;
 
 @RestController
 @RequestMapping("/api/recommend-tracks")
@@ -24,6 +25,15 @@ public class RecommendTrackController {
         try {
             log.info("RecommendTrack 생성 요청: review_id={}, track_id={}", 
                 recommendTrack.getUserReviewId(), recommendTrack.getTrackId());
+            
+            // 중복 체크
+            Optional<RecommendTrack> existingRecommendTrack = recommendTrackRepository
+                .findByUserReviewIdAndTrackId(recommendTrack.getUserReviewId(), recommendTrack.getTrackId());
+            
+            if (existingRecommendTrack.isPresent()) {
+                log.info("기존 RecommendTrack 반환: {}", existingRecommendTrack.get().getId());
+                return ResponseEntity.ok(existingRecommendTrack.get());
+            }
             
             // 새 RecommendTrack 생성
             RecommendTrack newRecommendTrack = RecommendTrack.builder()

@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Loader2, Music, Star, Heart, Save, ArrowLeft } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useNavigate } from 'react-router-dom';
+import { getApiUrl } from '@/lib/api';
 
 interface Album {
   id: number;
@@ -83,7 +84,8 @@ const WriteReviewPage: React.FC = () => {
     setSuccess(null);
 
     try {
-      const response = await fetch('/api/user-reviews', {
+      const apiUrl = getApiUrl();
+      const response = await fetch(`${apiUrl}/user-reviews`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

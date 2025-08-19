@@ -7,6 +7,7 @@ import org.springframework.stereotype.Repository;
 import shop.jazzmate.jazzmateshop.userReview.entity.RecommendTrack;
 
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface RecommendTrackRepository extends JpaRepository<RecommendTrack, Integer> {
@@ -23,5 +24,10 @@ public interface RecommendTrackRepository extends JpaRepository<RecommendTrack, 
             "WHERE rt.userReviewId = :reviewId " +
             "ORDER BY rt.recommendationScore DESC")
     List<RecommendTrack> findByUserReviewIdOrderByScoreDesc(@Param("reviewId") Integer reviewId);
+    
+    /**
+     * 특정 감상문과 트랙의 추천 결과 조회 (중복 체크용)
+     */
+    Optional<RecommendTrack> findByUserReviewIdAndTrackId(Integer userReviewId, Integer trackId);
 }
 

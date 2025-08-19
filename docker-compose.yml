@@ -1,6 +1,23 @@
+# 기본 Docker Compose (개발환경)
+# 사용법: docker-compose up -d
+# 또는: docker-compose -f docker-compose.dev.yml up -d
+
 services:
+  nginx:
+    image: nginx:alpine
+    container_name: nginx
+    ports:
+      - '80:80'
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+    depends_on:
+      - frontend
+      - java-backend
+      - ai-api
+
   java-backend:
     build: ./backend
+    container_name: java-backend
     ports:
       - '8080:8080'
     env_file:
@@ -9,10 +26,12 @@ services:
       - ./backend:/app
     environment:
       - SPRING_PROFILES_ACTIVE=docker
+      - AI_SERVICE_URL=${AI_SERVICE_URL:-http://ai-api:8000}
     command: ./gradlew bootRun
   
   ai-api:
     build: ./backend/ai-service
+    container_name: ai-api
     ports:
       - '8000:8000'
     env_file:
@@ -21,10 +40,13 @@ services:
       - java-backend
     volumes:
       - ./backend/ai-service:/app
+    environment:
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:3001,http://localhost:3000}
     command: python api_server.py
 
   frontend:
     build: ./frontend
+    container_name: frontend
     ports:
       - '3000:3000'
     depends_on:
@@ -32,4 +54,7 @@ services:
     volumes:
       - ./frontend:/app
       - /app/node_modules
+    environment:
+      - VITE_API_URL=${VITE_API_URL:-http://localhost:8080}
+      - VITE_DOCKER=true
     command: npm run dev
