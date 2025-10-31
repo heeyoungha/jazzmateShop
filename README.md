@@ -104,101 +104,12 @@ JazzmateShop은 재즈 입문자들을 위한 종합 플랫폼입니다. 사용�
 
 **참고**: 이 플로우에서 추천 생성이 실패하거나 누락된 경우, 사용자는 다음 플로우를 통해 수동으로 추천을 다시 생성할 수 있습니다.
 
-#### 2. 추천 재생성 플로우 (자동 추천 실패 시 대비용)
-자동 추천 생성이 실패했거나 생성되지 않은 경우, 사용자가 감상문 상세 페이지에서 수동으로 추천을 다시 생성할 수 있습니다.
-
-1. **추천 재생성 요청**: 사용자가 버튼 클릭 → 프론트엔드에서 FastAPI(`/ai-api/recommend/by-review`)로 직접 요청
-2. **임베딩 생성**: AI 서비스가 Hugging Face API를 통해 감상문을 벡터로 변환
-3. **벡터 검색**: AI 서비스가 Qdrant 클라우드 API를 통해 유사 곡 검색
-4. **추천 사유 생성**: AI 서비스가 OpenAI GPT API를 통해 추천 사유 생성
-5. **결과 저장**: AI 서비스가 백엔드 API를 호출하여 추천 결과를 Supabase PostgreSQL에 저장
-
-#### 3. 데이터 품질 조회 플로우 (프론트엔드 → FastAPI 직접 호출)
+#### 2. 데이터 품질 조회 플로우 (프론트엔드 → FastAPI 직접 호출)
 1. **데이터 품질 요청**: 프론트엔드에서 FastAPI(`/ai-api/admin/data-quality`)로 직접 요청
 2. **데이터 분석**: AI 서비스가 Supabase PostgreSQL에서 데이터를 조회하고 품질을 분석
 3. **결과 반환**: 데이터 품질 현황(완성도, 시계열 트렌드 등)을 JSON 형태로 반환
 
 **참고**: Qdrant는 클라우드 서비스로, AI 서비스 내부에서 QdrantClient를 통해 직접 API로 연결됩니다. 별도의 로컬 서비스나 컨테이너가 아닙니다.
-
-## 🚀 설치 및 실행
-
-### 사전 요구사항
-- Docker & Docker Compose
-
-### 환경 변수 설정
-
-#### 개발 환경
-`backend/.env` 파일을 생성하고 다음 내용을 설정합니다:
-
-```env
-# 프론트엔드 설정
-VITE_API_URL=http://localhost:8080
-
-# 자바 백엔드 설정
-AI_SERVICE_URL=http://ai-api:8000
-
-# AI 서비스 설정
-ALLOWED_ORIGINS=http://localhost:3001,http://localhost:3000
-
-# 데이터베이스 설정 (Supabase)
-SPRING_DATASOURCE_URL=jdbc:postgresql://your-supabase-host:5432/your-database
-SPRING_DATASOURCE_USERNAME=your-username
-SPRING_DATASOURCE_PASSWORD=your-password
-
-# Hugging Face API
-HF_TOKEN=your-hugging-face-token
-
-# Qdrant 설정
-QDRANT_URL=https://your-qdrant-host:6333
-QDRANT_API_KEY=your-qdrant-api-key
-
-# OpenAI API
-OPENAI_API_KEY=your-openai-api-key
-```
-
-#### 운영 환경
-`env.production.example` 파일을 참고하여 운영 환경 설정 파일을 생성합니다.
-
-### Docker Compose를 이용한 실행
-
-#### 개발 환경
-```bash
-# 전체 서비스 실행
-docker-compose up -d
-
-# 특정 서비스만 실행
-docker-compose up -d java-backend
-docker-compose up -d ai-api
-docker-compose up -d frontend
-```
-
-#### 운영 환경
-```bash
-docker-compose -f docker-compose.prod.yml up -d
-```
-
-### 로컬 개발 환경 실행
-
-#### Frontend
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-#### Backend (Spring Boot)
-```bash
-cd backend
-./gradlew bootRun
-```
-
-#### AI Service
-```bash
-cd backend/ai-service
-pip install -r requirements.txt
-python api_server.py
-```
-
 
 ## 🔑 주요 기능 상세
 
@@ -584,3 +495,81 @@ async def get_data_quality():
 - 감상문 작성 시 자동 완성 기능
 
 
+## 🚀 설치 및 실행
+
+### 사전 요구사항
+- Docker & Docker Compose
+
+### 환경 변수 설정
+
+#### 개발 환경
+`backend/.env` 파일을 생성하고 다음 내용을 설정합니다:
+
+```env
+# 프론트엔드 설정
+VITE_API_URL=http://localhost:8080
+
+# 자바 백엔드 설정
+AI_SERVICE_URL=http://ai-api:8000
+
+# AI 서비스 설정
+ALLOWED_ORIGINS=http://localhost:3001,http://localhost:3000
+
+# 데이터베이스 설정 (Supabase)
+SPRING_DATASOURCE_URL=jdbc:postgresql://your-supabase-host:5432/your-database
+SPRING_DATASOURCE_USERNAME=your-username
+SPRING_DATASOURCE_PASSWORD=your-password
+
+# Hugging Face API
+HF_TOKEN=your-hugging-face-token
+
+# Qdrant 설정
+QDRANT_URL=https://your-qdrant-host:6333
+QDRANT_API_KEY=your-qdrant-api-key
+
+# OpenAI API
+OPENAI_API_KEY=your-openai-api-key
+```
+
+#### 운영 환경
+`env.production.example` 파일을 참고하여 운영 환경 설정 파일을 생성합니다.
+
+### Docker Compose를 이용한 실행
+
+#### 개발 환경
+```bash
+# 전체 서비스 실행
+docker-compose up -d
+
+# 특정 서비스만 실행
+docker-compose up -d java-backend
+docker-compose up -d ai-api
+docker-compose up -d frontend
+```
+
+#### 운영 환경
+```bash
+docker-compose -f docker-compose.prod.yml up -d
+```
+
+### 로컬 개발 환경 실행
+
+#### Frontend
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+#### Backend (Spring Boot)
+```bash
+cd backend
+./gradlew bootRun
+```
+
+#### AI Service
+```bash
+cd backend/ai-service
+pip install -r requirements.txt
+python api_server.py
+```
