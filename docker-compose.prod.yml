@@ -1,6 +1,6 @@
 services:
   java-backend:
-    image: jazzmate-backend:latest
+    image: jazzmateshop-java-backend:latest
     container_name: java-backend
     ports:
       - '8080:8080'
@@ -14,7 +14,7 @@ services:
       - jazzmate-network
   
   ai-api:
-    image: jazzmate-ai-api:latest
+    image: jazzmateshop-ai-api:latest
     container_name: ai-api
     ports:
       - '8000:8000'
