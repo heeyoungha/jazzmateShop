@@ -102,8 +102,6 @@ JazzmateShop은 재즈 입문자들을 위한 종합 플랫폼입니다. 사용�
 6. **추천 사유 생성**: AI 서비스가 OpenAI GPT API를 통해 각 추천 곡에 대한 추천 사유 생성
 7. **결과 저장**: AI 서비스가 백엔드 API를 호출하여 추천 결과를 Supabase PostgreSQL에 저장
 
-**참고**: 이 플로우에서 추천 생성이 실패하거나 누락된 경우, 사용자는 다음 플로우를 통해 수동으로 추천을 다시 생성할 수 있습니다.
-
 #### 2. 데이터 품질 조회 플로우 (프론트엔드 → FastAPI 직접 호출)
 1. **데이터 품질 요청**: 프론트엔드에서 FastAPI(`/ai-api/admin/data-quality`)로 직접 요청
 2. **데이터 분석**: AI 서비스가 Supabase PostgreSQL에서 데이터를 조회하고 품질을 분석
@@ -531,9 +529,6 @@ QDRANT_API_KEY=your-qdrant-api-key
 OPENAI_API_KEY=your-openai-api-key
 ```
 
-#### 운영 환경
-`env.production.example` 파일을 참고하여 운영 환경 설정 파일을 생성합니다.
-
 ### Docker Compose를 이용한 실행
 
 #### 개발 환경
@@ -545,31 +540,4 @@ docker-compose up -d
 docker-compose up -d java-backend
 docker-compose up -d ai-api
 docker-compose up -d frontend
-```
-
-#### 운영 환경
-```bash
-docker-compose -f docker-compose.prod.yml up -d
-```
-
-### 로컬 개발 환경 실행
-
-#### Frontend
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-#### Backend (Spring Boot)
-```bash
-cd backend
-./gradlew bootRun
-```
-
-#### AI Service
-```bash
-cd backend/ai-service
-pip install -r requirements.txt
-python api_server.py
 ```
