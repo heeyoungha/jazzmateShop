@@ -5,6 +5,7 @@ import ReviewRecommendPage from './pages/ReviewRecommendPage';
 import WriteReviewPage from './pages/WriteReviewPage';
 import MyReviewsPage from './pages/MyReviewsPage';
 import ReviewBasedRecommendPage from './pages/ReviewBasedRecommendPage';
+import AdminPage from './pages/AdminPage';
 
 function App() {
   return (
@@ -15,6 +16,7 @@ function App() {
         <Route path="/recommend" element={<MyReviewsPage />} />
         <Route path="/recommend/:reviewId" element={<ReviewBasedRecommendPage />} />
         <Route path="/write-review" element={<WriteReviewPage />} />
+        <Route path="/admin" element={<AdminPage />} />
       </Routes>
     </Router>
   );

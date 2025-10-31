@@ -3,7 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../co
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
 import { ImageWithFallback } from "../components/figma/ImageWithFallback";
-import { Heart, MapPin, TrendingUp, BookOpen, PenTool, User, Sparkles, Star, Calendar } from "lucide-react";
+import { Heart, MapPin, TrendingUp, BookOpen, PenTool, User, Sparkles, Star, Calendar, Settings } from "lucide-react";
 import { useNavigate } from 'react-router-dom';
 
 export default function MainPage() {
@@ -40,6 +40,10 @@ export default function MainPage() {
     navigate('/write-review');
   };
 
+  const handleAdminClick = () => {
+    navigate('/admin');
+  };
+
   const features = [
     {
       icon: Heart,
@@ -72,13 +76,26 @@ export default function MainPage() {
 
   return (
     <div className="space-y-16 px-4 max-w-7xl mx-auto">
+      {/* Admin Button */}
+      <div className="flex justify-end mt-4">
+        <Button 
+          variant="default" 
+          size="sm"
+          onClick={handleAdminClick}
+          className="flex items-center gap-2 bg-black text-white hover:bg-gray-800"
+        >
+          <Settings className="h-4 w-4" />
+          관리자 페이지
+        </Button>
+      </div>
+
       {/* Hero Section */}
       <section className="relative -mt-8">
         <div className="relative overflow-hidden rounded-2xl">
           <ImageWithFallback
             src="https://images.unsplash.com/photo-1687589891886-a8578a54ef76?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1400"
             alt="Jazz musician"
-            className="w-full h-[500px] object-cover"
+            className="w-full h-[400px] object-cover"
           />
           <div className="absolute inset-0 bg-gradient-to-t from-black via-black/60 to-black/30" />
           <div className="absolute inset-0 flex items-center justify-center text-center">
