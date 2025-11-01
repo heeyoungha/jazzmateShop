@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Loader2, Music, Star, ArrowLeft, Heart, Play } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { getApiUrl, getAiServiceUrl } from '@/lib/api';
+import { getApiUrl } from '@/lib/api';
 
 interface Recommendation {
   pointId: string;
@@ -44,66 +44,115 @@ const ReviewBasedRecommendPage: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false); // 추천 생성 중 플래그
-  const [hasTriedGeneration, setHasTriedGeneration] = useState(false); // 추천 생성 시도 여부
+  const [pollingAttempts, setPollingAttempts] = useState(0);
+  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const MAX_POLLING_ATTEMPTS = 30; // 최대 5분 (10초 * 30)
 
   useEffect(() => {
     if (reviewId) {
       // reviewId가 변경되면 상태 초기화
-      setHasTriedGeneration(false);
       setIsGenerating(false);
+      setPollingAttempts(0);
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+        pollingIntervalRef.current = null;
+      }
       fetchReviewAndRecommendations();
     }
+
+    // 컴포넌트 언마운트 시 polling 정리
+    return () => {
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+      }
+    };
   }, [reviewId]);
 
-  const generateNewRecommendations = async (reviewContent: string, reviewId: string) => {
-    // 이미 생성 중이거나 시도했다면 중단
-    if (isGenerating || hasTriedGeneration) {
-      console.log('추천 생성이 이미 진행 중이거나 시도되었습니다.');
+  // 추천 결과만 확인하는 함수 (polling용)
+  const checkRecommendations = async (): Promise<boolean> => {
+    try {
+      const apiUrl = getApiUrl();
+      const response = await fetch(`${apiUrl}/user-reviews/${reviewId}`);
+      if (!response.ok) {
+        return false;
+      }
+      
+      const data = await response.json();
+      
+      // 추천 결과가 있으면 true 반환
+      if (data.hasRecommendations && data.recommendations && data.recommendations.length > 0) {
+        // 추천 결과 포맷팅 및 표시
+        const formattedRecommendations = await Promise.all(
+          data.recommendations.map(async (rec: any) => {
+            const trackResponse = await fetch(`${apiUrl}/tracks/${rec.trackId}`);
+            const trackData = trackResponse.ok ? await trackResponse.json() : null;
+            
+            return {
+              pointId: rec.trackId,
+              score: rec.recommendationScore,
+              payload: {
+                albumArtist: trackData?.artistName || 'Unknown Artist',
+                albumTitle: trackData?.trackTitle || 'Unknown Album',
+                genre: trackData?.genre || 'jazz',
+                mood: trackData?.mood || 'melancholic',
+                vocalStyle: trackData?.vocalStyle || 'instrumental',
+                instrumentation: trackData?.instrumentation || 'N/A',
+                energy: trackData?.energy || 0.5,
+                bpm: trackData?.bpm || 120
+              },
+              reason: rec.recommendationReason
+            };
+          })
+        );
+        setRecommendations(formattedRecommendations);
+        return true;
+      }
+      return false;
+    } catch (err) {
+      console.error('추천 확인 오류:', err);
+      return false;
+    }
+  };
+
+  // polling 시작 함수
+  const startPolling = () => {
+    // 이미 polling이 진행 중이면 중단
+    if (pollingIntervalRef.current) {
       return;
     }
 
-    try {
-      setIsGenerating(true);
-      setIsLoading(true);
-      setError(null);
-      
-      // 파이썬 AI 서비스로 직접 요청
-      const aiServiceUrl = getAiServiceUrl();
-      const response = await fetch(`${aiServiceUrl}/recommend/by-review`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          review_text: reviewContent,
-          review_id: parseInt(reviewId),
-          limit: 3
-        }),
+    setIsGenerating(true);
+    setPollingAttempts(0);
+
+    const interval = setInterval(async () => {
+      setPollingAttempts(prev => {
+        const newAttempts = prev + 1;
+        
+        // 최대 시도 횟수 초과 시 중단
+        if (newAttempts >= MAX_POLLING_ATTEMPTS) {
+          clearInterval(interval);
+          pollingIntervalRef.current = null;
+          setIsGenerating(false);
+          setError('추천 생성이 시간 내에 완료되지 않았습니다. 잠시 후 다시 시도해주세요.');
+          return newAttempts;
+        }
+
+        // 재조회
+        checkRecommendations().then(hasRecommendations => {
+          if (hasRecommendations) {
+            // 추천 결과를 찾았으면 polling 중지
+            clearInterval(interval);
+            pollingIntervalRef.current = null;
+            setIsGenerating(false);
+            setPollingAttempts(0);
+          }
+        });
+
+        return newAttempts;
       });
+    }, 10000); // 10초마다 재조회
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('AI 서비스 응답 오류:', errorText);
-        throw new Error('추천 생성에 실패했습니다.');
-      }
-
-      const data = await response.json();
-      console.log('추천 생성 완료:', data);
-      
-      // 추천 생성 시도 완료 표시
-      setHasTriedGeneration(true);
-      
-      // 추천 생성 완료 후 다시 감상문과 추천 결과를 조회
-      await fetchReviewAndRecommendations();
-      
-    } catch (err) {
-      console.error('추천 생성 오류:', err);
-      setError(err instanceof Error ? err.message : '추천 생성 중 오류가 발생했습니다.');
-      setHasTriedGeneration(true); // 에러가 발생해도 시도 완료로 표시
-    } finally {
-      setIsGenerating(false);
-      setIsLoading(false);
-    }
+    pollingIntervalRef.current = interval;
   };
 
   const fetchReviewAndRecommendations = async () => {
@@ -121,6 +170,13 @@ const ReviewBasedRecommendPage: React.FC = () => {
       
       // 추천 결과가 있으면 표시
       if (data.hasRecommendations && data.recommendations && data.recommendations.length > 0) {
+        // 기존 polling 중지
+        if (pollingIntervalRef.current) {
+          clearInterval(pollingIntervalRef.current);
+          pollingIntervalRef.current = null;
+        }
+        setIsGenerating(false);
+        
         const formattedRecommendations = await Promise.all(
           data.recommendations.map(async (rec: any) => {
             // Track 정보 조회
@@ -147,16 +203,12 @@ const ReviewBasedRecommendPage: React.FC = () => {
         );
         setRecommendations(formattedRecommendations);
       } else {
-        // 추천 결과가 없고, 아직 생성 시도를 하지 않았다면 자동으로 생성
-        if (!hasTriedGeneration && !isGenerating) {
-          console.log('추천 결과가 없습니다. 추천을 생성합니다.');
-          setRecommendations([]);
-          
-          // data에서 직접 reviewContent를 사용
-          await generateNewRecommendations(data.reviewContent, reviewId!);
-        } else {
-          // 이미 시도했거나 생성 중이면 빈 목록만 표시
-          setRecommendations([]);
+        // 추천 결과가 없으면 "생성중" 표시하고 polling 시작
+        setRecommendations([]);
+        // polling이 아직 시작되지 않았다면 시작
+        if (!pollingIntervalRef.current && !isGenerating) {
+          console.log('추천 결과가 없습니다. 자바 백엔드에서 생성 중입니다. polling 시작...');
+          startPolling();
         }
       }
     } catch (err) {
@@ -274,8 +326,17 @@ const ReviewBasedRecommendPage: React.FC = () => {
               <Card>
                 <CardContent className="text-center py-8">
                   <Music className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                  <p className="text-gray-500 mb-4">추천 결과를 생성하고 있습니다...</p>
-                  <p className="text-sm text-gray-400">잠시만 기다려주세요.</p>
+                  {isGenerating ? (
+                    <>
+                      <p className="text-gray-700 mb-2 font-semibold">추천 결과를 생성하고 있습니다...</p>
+                      <p className="text-sm text-gray-500 mb-4">잠시만 기다려주세요.</p>
+                      <Loader2 className="h-6 w-6 animate-spin mx-auto text-blue-600" />
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-gray-500 mb-4">추천 결과가 없습니다.</p>
+                    </>
+                  )}
                 </CardContent>
               </Card>
             ) : (

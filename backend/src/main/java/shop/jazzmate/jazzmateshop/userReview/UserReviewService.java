@@ -225,8 +225,7 @@ public class UserReviewService {
             HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
             
             if (response.statusCode() == 200) {
-                log.info("추천 생성 완료: review_id={}", reviewId);
-                log.info("FastAPI 응답: {}", response.body());
+                log.info("[Java 백엔드] FastAPI에서 추천 생성 완료 응답 수신: review_id={}", reviewId);
             } else {
                 log.error("추천 생성 실패: review_id={}, statusCode={}, response={}", 
                     reviewId, response.statusCode(), response.body());

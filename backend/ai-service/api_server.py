@@ -65,8 +65,7 @@ async def recommend_by_review(request: dict):
         )
         
         if result.returncode == 0:
-            print(f"✅ 추천 생성 완료: review_id={review_id}")
-            print(f"📤 Python 출력: {result.stdout}")
+            print(f"✅ [FastAPI] Python 스크립트 실행 완료: review_id={review_id}")
             
             # Python 스크립트 출력에서 JSON 결과 파싱
             try:

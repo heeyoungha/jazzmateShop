@@ -8,9 +8,11 @@ const sslKeyPath = path.resolve(__dirname, './ssl/privkey.pem')
 const sslCertPath = path.resolve(__dirname, './ssl/fullchain.pem')
 const hasSSL = fs.existsSync(sslKeyPath) && fs.existsSync(sslCertPath)
 
-// 운영 환경 여부 확인 (nginx가 있는 경우)
-const isProduction = process.env.NODE_ENV === 'production' || hasSSL
+// 운영 환경 여부 확인
 const isDocker = process.env.VITE_DOCKER === 'true'
+// Docker 환경이거나 SSL이 없으면 개발 환경
+// SSL이 있고 Docker가 아니면 프로덕션 (실제 도메인 사용)
+const isProduction = !isDocker && hasSSL && process.env.NODE_ENV === 'production'
 
 export default defineConfig({
   plugins: [react()],
@@ -36,10 +38,13 @@ export default defineConfig({
     }),
     allowedHosts: ['actlog.shop', 'localhost'],
     hmr: {
-      host: 'actlog.shop',
+      // Docker 환경이나 개발 환경에서는 localhost 사용
+      // 실제 프로덕션(SSL + 프로덕션 모드)에서만 actlog.shop 사용
+      host: isProduction ? 'actlog.shop' : 'localhost',
       port: 3000,
       clientPort: 3000,
-      ...(hasSSL && { protocol: 'wss' })
+      // 프로덕션에서만 wss 사용
+      ...(isProduction && hasSSL && { protocol: 'wss' })
     },
     // 프록시 설정
     // 운영 환경에서는 nginx가 프록시를 처리하므로 Vite 프록시 비활성화
