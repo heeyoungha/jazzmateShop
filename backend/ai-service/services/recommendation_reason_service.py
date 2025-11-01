@@ -1,23 +1,71 @@
 #!/usr/bin/env python3
 """
-추천 사유 생성 서비스
+추천 사유 생성 서비스 (LangChain 사용)
 """
 
-import re
-import requests
-import json
 import os
-from typing import Dict, List, Any, Optional
-from difflib import SequenceMatcher
+from typing import Dict, List, Any
+
+from langchain_openai import ChatOpenAI
+from langchain.prompts import ChatPromptTemplate, SystemMessagePromptTemplate, HumanMessagePromptTemplate
 
 class RecommendationReasonService:
     def __init__(self):
         self.similarity_threshold = 0.3  # 유사도 임계값
         self.openai_api_key = os.getenv("OPENAI_API_KEY")
+        
+        # LangChain LLM 초기화 (자동 재시도 포함)
+        self.llm = ChatOpenAI(
+            model="gpt-3.5-turbo",
+            temperature=0.7,
+            max_tokens=300,
+            timeout=30,
+            max_retries=3,  # 자동으로 3번 재시도
+            openai_api_key=self.openai_api_key
+        ) if self.openai_api_key else None
+        
+        # 프롬프트 템플릿 구조화
+        self.prompt_template = ChatPromptTemplate.from_messages([
+            SystemMessagePromptTemplate.from_template(
+                "당신은 음악 추천 전문가입니다. 사용자의 감상문을 바탕으로 추천된 곡에 대한 추천 사유를 간결하고 명확하게 작성해주세요."
+            ),
+            HumanMessagePromptTemplate.from_template(
+                """당신은 음악 추천 전문가입니다. 사용자의 감상문을 바탕으로 추천된 곡에 대한 추천 사유를 작성해주세요.
+
+**사용자 감상문:**
+{user_review}
+
+**추천된 곡 정보:**
+- 아티스트: {artist_name}
+- 곡명: {track_title}
+- 앨범: {album_title}
+
+**추천된 곡에 대한 전문가 리뷰 내용:**
+{content}
+
+**추천된 곡에 대한 리뷰 요약:**
+{review_summary}
+
+**요구사항:**
+1. 사용자의 감상문과 추천된 곡의 공통점을 찾아 설명하세요
+2. 추천된 곡의 특징과 매력을 간결하게 설명하세요
+3. 왜 이 곡을 추천하는지 구체적인 이유를 제시하세요
+4. 한국어로 작성하세요
+5. 완전한 문장으로 마무리하세요 (문장이 중간에 끊어지지 않도록 주의)
+6. 2-3문장으로 간결하게 작성하되, 반드시 완전한 문장으로 끝내세요
+
+**중요:**
+- 문장이 중간에 끊어지지 않도록 주의하세요
+- 추천 사유만 작성하고, 다른 설명이나 부가 정보는 포함하지 마세요
+
+**추천 사유:**
+"""
+            )
+        ])
     
     def generate_recommendation_reason_with_llm(self, user_review: str, recommended_track: Dict[str, Any]) -> str:
         """
-        LLM을 사용하여 추천 사유 생성
+        LLM을 사용하여 추천 사유 생성 (LangChain 사용)
         
         Args:
             user_review: 사용자 감상문
@@ -27,31 +75,99 @@ class RecommendationReasonService:
             생성된 추천 사유
         """
         try:
+            # LLM이 초기화되지 않았으면 폴백 반환
+            if not self.llm:
+                print("⚠️ OpenAI API 키가 설정되지 않음")
+                return self._generate_fallback_reason(user_review, recommended_track)
+            
             # 추천 트랙 정보 추출 
             track_title = recommended_track.get("track_title", recommended_track.get("album_title", "Unknown Title"))
             artist_name = recommended_track.get("track_artist", recommended_track.get("album_artist", "Unknown Artist"))
             album_title = recommended_track.get("album_title", "Unknown Album")
-            content = recommended_track.get("content", "")
-            review_summary = recommended_track.get("review_summary", "")
+            content = recommended_track.get("content", "")[:500]  # 길이 제한
+            review_summary = recommended_track.get("review_summary", "")[:300]  # 길이 제한
             
-            # 프롬프트 작성
-            prompt = self._create_recommendation_prompt(
-                user_review, track_title, artist_name, album_title, content, review_summary
+            # 프롬프트 템플릿에 변수 주입
+            messages = self.prompt_template.format_messages(
+                user_review=user_review,
+                artist_name=artist_name,
+                track_title=track_title,
+                album_title=album_title,
+                content=content,
+                review_summary=review_summary
             )
             
-            # LLM API 호출
-            recommendation_reason = self._call_llm_api(prompt)
+            # LangChain으로 LLM 호출 (자동 재시도 포함)
+            print(f"🤖 LangChain으로 OpenAI GPT API 호출 중...")
+            response = self.llm.invoke(messages)
+            
+            recommendation_reason = response.content.strip()
             
             if recommendation_reason:
+                print(f"✅ LangChain 추천 사유 생성 성공: {recommendation_reason[:100]}...")
                 return recommendation_reason
             else:
-                # LLM 호출 실패 시 오류 문구 반환
-                return "❌ 추천 사유 생성에 실패했습니다. API 서버에 문제가 있을 수 있습니다."
+                # LLM 호출 실패 시 폴백 반환
+                print("⚠️ LLM 응답이 비어있음, 폴백 사용")
+                return self._generate_fallback_reason(user_review, recommended_track)
                 
         except Exception as e:
             print(f"❌ LLM 추천 사유 생성 실패: {e}")
-            # 오류 발생 시 구체적인 오류 문구 반환
-            return f"❌ 추천 사유 생성 중 오류가 발생했습니다: {str(e)}"
+            # 오류 발생 시 폴백 반환
+            return self._generate_fallback_reason(user_review, recommended_track)
+    
+    async def generate_recommendation_reason_with_llm_async(self, user_review: str, recommended_track: Dict[str, Any]) -> str:
+        """
+        LLM을 사용하여 추천 사유 생성 (비동기 버전, 병렬 처리용)
+        
+        Args:
+            user_review: 사용자 감상문
+            recommended_track: 추천된 트랙 정보
+            
+        Returns:
+            생성된 추천 사유
+        """
+        try:
+            # LLM이 초기화되지 않았으면 폴백 반환
+            if not self.llm:
+                print("⚠️ OpenAI API 키가 설정되지 않음")
+                return self._generate_fallback_reason(user_review, recommended_track)
+            
+            # 추천 트랙 정보 추출 
+            track_title = recommended_track.get("track_title", recommended_track.get("album_title", "Unknown Title"))
+            artist_name = recommended_track.get("track_artist", recommended_track.get("album_artist", "Unknown Artist"))
+            album_title = recommended_track.get("album_title", "Unknown Album")
+            content = recommended_track.get("content", "")[:500]  # 길이 제한
+            review_summary = recommended_track.get("review_summary", "")[:300]  # 길이 제한
+            
+            # 프롬프트 템플릿에 변수 주입
+            messages = self.prompt_template.format_messages(
+                user_review=user_review,
+                artist_name=artist_name,
+                track_title=track_title,
+                album_title=album_title,
+                content=content,
+                review_summary=review_summary
+            )
+            
+            # LangChain으로 LLM 호출 (비동기, 자동 재시도 포함)
+            print(f"🤖 LangChain으로 OpenAI GPT API 호출 중 (비동기)...")
+            response = await self.llm.ainvoke(messages)
+            
+            recommendation_reason = response.content.strip()
+            
+            if recommendation_reason:
+                print(f"✅ LangChain 추천 사유 생성 성공 (비동기): {recommendation_reason[:100]}...")
+                return recommendation_reason
+            else:
+                # LLM 호출 실패 시 폴백 반환
+                print("⚠️ LLM 응답이 비어있음, 폴백 사용")
+                return self._generate_fallback_reason(user_review, recommended_track)
+                
+        except Exception as e:
+            print(f"❌ LLM 추천 사유 생성 실패 (비동기): {e}")
+            # 오류 발생 시 폴백 반환
+            return self._generate_fallback_reason(user_review, recommended_track)
     
     def _is_fallback_reason_sufficient(self, reason: str) -> bool:
         """기본 추천 사유가 충분한지 판단"""
@@ -174,100 +290,3 @@ class RecommendationReasonService:
                 common.append(keyword)
         return common
     
-    def _create_recommendation_prompt(self, user_review: str, track_title: str, artist_name: str, 
-                                     album_title: str, content: str, review_summary: str) -> str:
-        """
-        LLM에 보낼 프롬프트 생성
-        """
-        prompt = f"""
-당신은 음악 추천 전문가입니다. 사용자의 감상문을 바탕으로 추천된 곡에 대한 추천 사유를 작성해주세요.
-
-**사용자 감상문:**
-{user_review}
-
-**추천된 곡 정보:**
-- 아티스트: {artist_name}
-- 곡명: {track_title}
-- 앨범: {album_title}
-
-**추천된 곡에 대한 전문가 리뷰 내용:**
-{content[:500]}...
-
-**추천된 곡에 대한 리뷰 요약:**
-{review_summary[:300]}...
-
-**요구사항:**
-1. 사용자의 감상문과 추천된 곡의 공통점을 찾아 설명하세요
-2. 추천된 곡의 특징과 매력을 간결하게 설명하세요
-3. 왜 이 곡을 추천하는지 구체적인 이유를 제시하세요
-4. 한국어로 작성하세요
-5. 완전한 문장으로 마무리하세요 (문장이 중간에 끊어지지 않도록 주의)
-6. 2-3문장으로 간결하게 작성하되, 반드시 완전한 문장으로 끝내세요
-
-**중요:**
-- 문장이 중간에 끊어지지 않도록 주의하세요
-- 추천 사유만 작성하고, 다른 설명이나 부가 정보는 포함하지 마세요
-
-**추천 사유:**
-"""
-        return prompt
-    
-    def _call_llm_api(self, prompt: str) -> Optional[str]:
-        """
-        OpenAI GPT API를 사용하여 LLM 호출
-        """
-        try:
-            if not self.openai_api_key:
-                print("⚠️ OpenAI API 키가 설정되지 않음")
-                return None
-            
-            # OpenAI API 엔드포인트
-            api_url = "https://api.openai.com/v1/chat/completions"
-            
-            headers = {
-                "Authorization": f"Bearer {self.openai_api_key}",
-                "Content-Type": "application/json"
-            }
-            
-            payload = {
-                "model": "gpt-3.5-turbo",
-                "messages": [
-                    {
-                        "role": "system",
-                        "content": "당신은 음악 추천 전문가입니다. 사용자의 감상문을 바탕으로 추천된 곡에 대한 추천 사유를 간결하고 명확하게 작성해주세요."
-                    },
-                    {
-                        "role": "user",
-                        "content": prompt
-                    }
-                ],
-                "max_tokens": 300,  # 완전한 문장 생성을 위해 토큰 수 증가
-                "temperature": 0.7
-            }
-            
-            print(f"🤖 OpenAI GPT API 호출 중...")
-            
-            response = requests.post(api_url, headers=headers, json=payload, timeout=30)
-            
-            if response.status_code == 200:
-                result = response.json()
-                if "choices" in result and len(result["choices"]) > 0:
-                    generated_text = result["choices"][0]["message"]["content"].strip()
-                    print(f"✅ OpenAI 추천 사유 생성 성공: {generated_text[:100]}...")
-                    return generated_text
-                else:
-                    print(f"⚠️ OpenAI 응답 형식 오류: {result}")
-                    return None
-            elif response.status_code == 429:
-                # 할당량 초과 시 오류 문구 반환
-                print("❌ OpenAI API 할당량 초과")
-                return "⚠️ OpenAI API 할당량이 초과되어 추천 사유를 생성할 수 없습니다. 관리자에게 문의하세요."
-            else:
-                error_msg = f"OpenAI API 호출 실패 (상태코드: {response.status_code})"
-                print(f"❌ {error_msg} - {response.text}")
-                return f"❌ {error_msg}"
-                
-        except Exception as e:
-            error_msg = f"OpenAI API 호출 중 네트워크 오류: {str(e)}"
-            print(f"❌ {error_msg}")
-            return f"❌ {error_msg}"
