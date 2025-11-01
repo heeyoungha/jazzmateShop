@@ -26,7 +26,7 @@ load_dotenv(env_path)
 def save_recommendations_to_db(review_id: int, recommendations: list, user_review_text: str):
     """추천 결과를 Java 백엔드 DB에 저장합니다."""
     try:
-        print(f"💾 추천 결과를 DB에 저장 중... (review_id: {review_id}, 추천 개수: {len(recommendations)})")
+        print(f"💾 [Python] 추천 결과를 DB에 저장 시작 (review_id: {review_id}, 추천 개수: {len(recommendations)})")
         
         if not recommendations:
             print("⚠️ 저장할 추천 결과가 없습니다.")
@@ -122,7 +122,7 @@ def save_recommendations_to_db(review_id: int, recommendations: list, user_revie
                 print(f"❌ Track 저장 실패: {track_response.status_code} - {track_response.text}")
                 failed_count += 1
         
-        print(f"💾 추천 결과 저장 완료: 성공 {saved_count}개, 실패 {failed_count}개")
+        print(f"💾 [Python] 추천 결과 저장 완료: 성공 {saved_count}개, 실패 {failed_count}개 (review_id: {review_id})")
         
     except Exception as e:
         print(f"❌ DB 저장 실패: {e}")
@@ -150,38 +150,44 @@ async def recommend_by_review(review_text: str, review_id: int = None, limit: in
         
         print(f"✅ 추천 완료: {len(recommendations)}개 곡")
         
-        # 추천사유 생성
+        # 추천사유 생성 (병렬 처리로 속도 개선)
         reason_service = RecommendationReasonService()
-        recommendations_with_reasons = []
         
-        for rec in recommendations:
+        async def generate_reason_for_recommendation(rec):
+            """개별 추천에 대한 사유 생성"""
             try:
-                # LLM을 사용한 추천사유 생성
                 payload = rec.get("payload", {})
                 print(f"🔍 추천 데이터 확인: {payload.get('track_artist', 'Unknown')} - {payload.get('track_title', 'Unknown')}")
                 
-                reason = reason_service.generate_recommendation_reason_with_llm(
+                reason = await reason_service.generate_recommendation_reason_with_llm_async(
                     user_review=review_text,
                     recommended_track=payload
                 )
                 
-                # 추천사유를 포함한 새로운 추천 결과 생성
                 rec_with_reason = rec.copy()
                 rec_with_reason["reason"] = reason
-                recommendations_with_reasons.append(rec_with_reason)
-                
                 print(f"💡 추천사유 생성: {reason[:50]}...")
+                return rec_with_reason
                 
             except Exception as e:
                 print(f"⚠️ 추천사유 생성 실패: {e}")
                 # 추천사유 생성 실패 시 기본 메시지 사용
                 rec_with_reason = rec.copy()
                 rec_with_reason["reason"] = f"감상문과 유사한 스타일의 곡입니다. (유사도: {rec.get('score', 0.0)*100:.1f}%)"
-                recommendations_with_reasons.append(rec_with_reason)
+                return rec_with_reason
+        
+        # 병렬 처리로 모든 추천 사유를 동시에 생성
+        print(f"🚀 병렬로 추천 사유 생성 시작: {len(recommendations)}개")
+        tasks = [generate_reason_for_recommendation(rec) for rec in recommendations]
+        recommendations_with_reasons = await asyncio.gather(*tasks)
         
         # review_id가 제공되면 DB에 저장
         if review_id:
+            print(f"💾 DB 저장 시작: review_id={review_id}, 추천 개수={len(recommendations_with_reasons)}")
             save_recommendations_to_db(review_id, recommendations_with_reasons, review_text)
+            print(f"✅ DB 저장 완료: review_id={review_id}")
+        else:
+            print("ℹ️ review_id가 없어 DB 저장을 건너뜁니다.")
         
         # 결과를 JSON 형태로 반환
         result = {
@@ -190,7 +196,7 @@ async def recommend_by_review(review_text: str, review_id: int = None, limit: in
             "count": len(recommendations_with_reasons)
         }
         
-        print(json.dumps(result, ensure_ascii=False, indent=2))
+        print(f"📤 Python 스크립트 실행 완료: review_id={review_id}")
         
         await qdrant_service.disconnect()
         
