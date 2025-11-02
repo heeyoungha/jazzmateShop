@@ -69,20 +69,27 @@ class DataQualityVisualizer:
             offset = 0
             
             while True:
+                print(f"  📦 배치 로드 시작: offset={offset}, limit={batch_size}")
                 response = self.supabase.table('critics_review')\
                     .select('*')\
-                    .range(offset, offset + batch_size - 1)\
+                    .limit(batch_size)\
+                    .offset(offset)\
                     .execute()
                 
                 if not response.data:
+                    print(f"  ⚠️ 응답 데이터 없음, 종료")
                     break
                 
+                loaded_count = len(response.data)
                 all_data.extend(response.data)
-                print(f"  📦 {offset}~{offset + len(response.data)} 레코드 로드")
+                print(f"  📦 {offset + 1}~{offset + loaded_count} 레코드 로드 완료 (실제: {loaded_count}개)")
                 
-                if len(response.data) < batch_size:
+                # 로드된 데이터가 배치 사이즈보다 작으면 마지막 배치
+                if loaded_count < batch_size:
+                    print(f"  ✅ 마지막 배치 도달 (로드된 개수: {loaded_count} < 배치 사이즈: {batch_size})")
                     break
                 
+                # 다음 배치로 이동
                 offset += batch_size
             
             self.df = pd.DataFrame(all_data)
