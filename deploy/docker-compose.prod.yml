@@ -1,0 +1,26 @@
+# 빌드용 Docker Compose (프로덕션 이미지 빌드 전용)
+# 사용법: docker-compose -f deploy/docker-compose.prod.yml build
+# 또는: docker-compose -f deploy/docker-compose.prod.yml up -d --build
+
+services:
+  java-backend:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile.prod
+    image: jazzmateshop-java-backend:latest
+  
+  ai-api:
+    build:
+      context: ../backend
+      dockerfile: ai-service/Dockerfile.prod
+    image: jazzmateshop-ai-api:latest
+
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile.prod
+    image: jazzmateshop-frontend:latest
+  
+  nginx:
+    image: nginx:alpine
+

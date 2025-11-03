@@ -319,3 +319,6 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+#pem키
+jazzmate.pem
