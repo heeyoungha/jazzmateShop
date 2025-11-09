@@ -304,6 +304,92 @@ async def generate_recommendation_reason_with_llm_async(
 
 </details>
 
+<details>
+<summary>🧪 테스트 코드 보기</summary>
+
+**Controller 단위 테스트 - 감상문 생성 (UserReviewControllerTest.java)**
+
+```java
+@Test
+@DisplayName("POST /api/user-reviews - 성공 시 200 OK 반환")
+void createUserReview_Success_ReturnsOk() throws Exception {
+    // given
+    when(userReviewService.createUserReview(any(UserReviewRequest.class)))
+        .thenReturn(defaultResponse);
+
+    // when & then - 핵심 필드만 검증 (행동 중심 테스트)
+    mockMvc.perform(post("/api/user-reviews")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(objectMapper.writeValueAsString(defaultRequest)))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.success").value(true))
+        .andExpect(jsonPath("$.message").value("감상문이 성공적으로 저장되었습니다."))
+        .andExpect(jsonPath("$.data.id").value(1))
+        .andExpect(jsonPath("$.data.trackName").value("Blue in Green"));
+    
+    // Service 호출 검증 - Controller가 실제로 일을 했는지 확인
+    verify(userReviewService, times(1))
+        .createUserReview(any(UserReviewRequest.class));
+}
+```
+
+**Controller 단위 테스트 - 감상문 조회 및 추천 결과 (UserReviewControllerTest.java)**
+
+```java
+@Test
+@DisplayName("GET /api/user-reviews/{id} - 200 OK 반환")
+void getUserReview_ReturnsOk() throws Exception {
+    // given
+    Integer reviewId = 1;
+    List<RecommendTrack> recommendations = Collections.emptyList();
+
+    // mock 동작 설정
+    when(userReviewService.getUserReview(reviewId)).thenReturn(defaultResponse);
+    when(userReviewService.getRecommendationsByReviewId(reviewId))
+        .thenReturn(recommendations);
+
+    // when & then - 핵심 필드만 검증 (행동 중심 테스트)
+    mockMvc.perform(get("/api/user-reviews/{id}", reviewId))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.id").value(reviewId))
+        .andExpect(jsonPath("$.trackName").value("Blue in Green"));
+    
+    // Service 호출 검증 - Controller가 실제로 일을 했는지 확인
+    verify(userReviewService, times(1)).getUserReview(reviewId);
+    verify(userReviewService, times(1)).getRecommendationsByReviewId(reviewId);
+}
+```
+
+**통합 테스트 - 감상문 생성 전체 플로우 (UserReviewIntegrationTest.java)**
+
+```java
+@Test
+@DisplayName("감상문 생성 전체 플로우 - HTTP 요청부터 DB 저장까지")
+void testCreateUserReview_전체_플로우() throws Exception {
+    // given
+    // when - HTTP 요청
+    mockMvc.perform(post("/api/user-reviews")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(objectMapper.writeValueAsString(defaultRequest)))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.success").value(true))
+        .andExpect(jsonPath("$.message").value("감상문이 성공적으로 저장되었습니다."))
+        .andExpect(jsonPath("$.data.trackName").value("Blue in Green"));
+
+    // then - 실제 DB에 저장되었는지 확인
+    List<UserReview> savedReviews = userReviewRepository.findAll();
+    assertThat(savedReviews).hasSize(1);
+    
+    UserReview savedReview = savedReviews.get(0);
+    assertThat(savedReview.getTrackName()).isEqualTo("Blue in Green");
+    assertThat(savedReview.getArtistName()).isEqualTo("Miles Davis");
+    assertThat(savedReview.getIsFeatured()).isFalse();
+    assertThat(savedReview.getLikeCount()).isEqualTo(0);
+}
+```
+
+</details>
+
 ### 2. 비동기 처리
 
 감상문 저장과 추천 생성을 분리하여 사용자 응답 시간을 최소화했습니다. 추천 생성은 비동기로 처리되며, 실패하더라도 감상문 저장은 성공으로 처리됩니다.
@@ -391,6 +477,68 @@ async def generate_recommendation_reason_with_llm_async(
         } catch (Exception e) {
             log.error("추천 생성 오류: review_id={}, error={}", reviewId, e.getMessage());
         }
+```
+
+</details>
+
+<details>
+<summary>🧪 테스트 코드 보기</summary>
+
+**Controller 단위 테스트 - 감상문 생성 후 비동기 추천 요청 (UserReviewControllerTest.java)**
+
+```java
+@Test
+@DisplayName("POST /api/user-reviews - 성공 시 200 OK 반환")
+void createUserReview_Success_ReturnsOk() throws Exception {
+    // given
+    when(userReviewService.createUserReview(any(UserReviewRequest.class)))
+        .thenReturn(defaultResponse);
+
+    // when & then - 핵심 필드만 검증 (행동 중심 테스트)
+    mockMvc.perform(post("/api/user-reviews")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(objectMapper.writeValueAsString(defaultRequest)))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.success").value(true))
+        .andExpect(jsonPath("$.message").value("감상문이 성공적으로 저장되었습니다."))
+        .andExpect(jsonPath("$.data.id").value(1));
+    
+    // Service 호출 검증 - Controller가 실제로 일을 했는지 확인
+    verify(userReviewService, times(1))
+        .createUserReview(any(UserReviewRequest.class));
+    
+    // 비동기 추천 생성 호출 검증 (실패해도 감상문 저장은 성공)
+    verify(userReviewService, times(1))
+        .generateRecommendationsForReview(anyInt(), anyString());
+}
+```
+
+**통합 테스트 - 감상문 생성 및 추천 결과 조회 (UserReviewIntegrationTest.java)**
+
+```java
+@Test
+@DisplayName("감상문 조회 - 추천 결과 포함")
+void testGetUserReview_추천_결과_포함() throws Exception {
+    // given
+    UserReview review = createUserReviewEntity();
+    UserReview savedReview = userReviewRepository.save(review);
+
+    Track track = createTrackEntity();
+    Track savedTrack = trackRepository.save(track);
+
+    RecommendTrack recommendTrack = createRecommendTrack(
+        savedReview.getId(), savedTrack.getId());
+    recommendTrackRepository.save(recommendTrack);
+
+    // when - HTTP 요청
+    mockMvc.perform(get("/api/user-reviews/{id}", savedReview.getId()))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.id").value(savedReview.getId()))
+        .andExpect(jsonPath("$.recommendations").isArray())
+        .andExpect(jsonPath("$.recommendations[0].trackId").value(savedTrack.getId()))
+        .andExpect(jsonPath("$.recommendations[0].recommendationScore").value(0.95))
+        .andExpect(jsonPath("$.hasRecommendations").value(true));
+}
 ```
 
 </details>
@@ -483,6 +631,15 @@ async def get_data_quality():
 
 </details>
 
+<details>
+<summary>🧪 테스트 코드 보기</summary>
+
+**참고**: 데이터 품질 관리 기능은 AI 서비스(FastAPI)에서 제공되며, 프론트엔드에서 직접 호출합니다. 백엔드 테스트는 해당 기능을 포함하지 않습니다.
+
+**향후 추가 예정**: AI 서비스에 대한 단위/통합 테스트 추가 예정입니다.
+
+</details>
+
 ## 📊 주요 API 엔드포인트
 
 ### Backend (Spring Boot)
@@ -500,87 +657,126 @@ async def get_data_quality():
 
 **참고**: 일부 AI 서비스 엔드포인트는 프론트엔드에서 Nginx 프록시(`/ai-api`)를 통해 직접 호출하며, 나머지는 Spring Boot 백엔드를 경유합니다.
 
+## 🧪 테스트
+
+프로젝트는 계층별 테스트 전략을 채택하여 각 레이어의 책임을 명확히 분리하고 검증합니다.
+
+### 테스트 구조
+
+#### 1. Controller 단위 테스트 (`UserReviewControllerTest`)
+- **목적**: HTTP 레이어 검증 (요청/응답, 상태 코드, JSON 구조)
+- **전략**: `@WebMvcTest`를 사용하여 Controller만 로드하고 Service는 Mock 처리
+- **검증 항목**:
+  - HTTP 상태 코드 (200, 400, 404, 500)
+  - 응답 JSON 구조 (`success`, `message`, `data`)
+  - Service 메서드 호출 여부
+  - 페이징 파라미터 전달
+  - 쿼리 파라미터 분기 처리
+
+**주요 테스트 케이스**:
+- ✅ 감상문 생성 성공 (POST `/api/user-reviews`)
+- ✅ 유효성 검증 실패 (@Valid 검증으로 400 반환)
+- ✅ 리소스 없음 예외 (404 Not Found)
+- ✅ 서비스 예외 발생 (500 Internal Server Error)
+- ✅ 감상문 목록 조회 (페이징, userId 파라미터 분기)
+- ✅ 감상문 조회/수정/삭제
+- ✅ 추천 결과 조회
+
+#### 2. Service 단위 테스트 (`UserReviewServiceTest`)
+- **목적**: 비즈니스 로직 검증 (데이터 변환, 트랜잭션 처리)
+- **전략**: `@ExtendWith(MockitoExtension.class)`로 Repository를 Mock 처리
+- **검증 항목**:
+  - 비즈니스 규칙 적용
+  - 데이터 변환 및 계산
+  - Repository 메서드 호출
+
+**주요 테스트 케이스**:
+- ✅ 감상문 생성 (엔티티 변환, 기본값 설정)
+- ✅ 감상문 조회 (리소스 없음 예외 처리)
+- ✅ 감상문 수정/삭제
+
+#### 3. 외부 의존성 테스트 (`UserReviewServiceExternalDependencyTest`)
+- **목적**: 외부 의존성(DB, 외부 API)과의 경계면 검증
+- **전략**: 외부 의존성 실패 시나리오 테스트
+- **검증 항목**:
+  - DB 연결 실패 처리
+  - 외부 API 호출 실패 처리
+
+**주요 테스트 케이스**:
+- ✅ DB 저장 실패 시 예외 처리 (대표 케이스)
+
+#### 4. 통합 테스트 (`UserReviewIntegrationTest`)
+- **목적**: 전체 플로우 검증 (Controller → Service → Repository → DB)
+- **전략**: `@SpringBootTest`로 전체 컨텍스트 로드, 실제 DB 사용 (H2 인메모리)
+- **검증 항목**:
+  - 엔드투엔드 플로우
+  - 실제 DB 저장/조회
+  - 트랜잭션 처리
+
+**주요 테스트 케이스**:
+- ✅ 감상문 생성 및 조회 (전체 플로우)
+- ✅ 감상문 수정/삭제 (전체 플로우)
+
+### 테스트 가이드 원칙
+
+프로젝트는 다음 원칙을 따릅니다:
+
+1. **계층별 책임 분리**: Controller는 HTTP 레이어만, Service는 비즈니스 로직만 검증
+2. **행동 중심 테스트**: 내부 구현보다 결과와 부수 효과 검증
+3. **GlobalExceptionHandler 활용**: Controller에서 try-catch 제거, 전역 예외 처리로 통일
+
+### 예외 처리 테스트 전략
+
+| 예외 타입 | HTTP 상태 | 처리 위치 | 테스트 위치 |
+|---------|---------|---------|-----------|
+| `MethodArgumentNotValidException` | 400 | GlobalExceptionHandler | ControllerTest |
+| `ResourceNotFoundException` | 404 | GlobalExceptionHandler | ControllerTest |
+| `BusinessException` | 400 | GlobalExceptionHandler | ControllerTest |
+| `RuntimeException` | 500 | GlobalExceptionHandler | ControllerTest |
+| `Exception` | 500 | GlobalExceptionHandler | ControllerTest |
+
 ## 🎯 향후 개선 계획
 
-### 1. 추천 정확도 향상
+### 1. 스포티파이 API 통합을 통한 진정한 RAG 구현 🥇
+- **외부 지식 통합**: 스포티파이 API를 통해 실시간 음악 데이터(인기도, 최신 앨범 정보, 아티스트의 다른 히트곡 등)를 검색하여 LLM에 제공
+- **RAG 패턴 완성**: 
+  - **Retrieval**: 벡터 DB에서 유사 곡 검색 + 스포티파이 API에서 외부 지식 검색
+  - **Augmentation**: 검색된 문서(평론가 리뷰) + 외부 지식(스포티파이 데이터)을 LLM에 제공
+  - **Generation**: LLM이 학습 시점에 알지 못한 실시간/외부 정보를 활용하여 더 정확하고 최신 정보를 반영한 추천 사유 생성
+- **추천 품질 향상**: 실시간 인기도, 최신 앨범 정보, 아티스트의 다른 작품 등 외부 지식을 활용한 더 풍부한 추천 사유 제공
+- **기술 스택**: Spotify Web API, OAuth 2.0 인증, API 레이트 리밋 관리
+
+### 2. 추천 정확도 향상
 - **곡 메타데이터 보강**: 현재 데이터셋의 곡 메타데이터(장르, 무드, BPM, 보컬 스타일 등)를 더욱 상세하고 정확하게 수집 및 보강
 - **다양한 메타데이터 소스 통합**: 음악 플랫폼 API, 음악 데이터베이스 등 다양한 소스에서 메타데이터 수집
 - **메타데이터 기반 하이브리드 추천**: 벡터 유사도와 메타데이터 필터링을 결합한 하이브리드 추천 시스템 구현
 
-### 2. 데이터 품질 향상
+### 3. 데이터 품질 향상
 - **데이터 검증 로직 강화**: 입력 데이터의 품질을 검증하는 자동화된 프로세스 구축
 - **데이터 클리닝 파이프라인**: 중복 데이터 제거, 누락된 필드 보완 등의 데이터 클리닝 자동화
 - **실시간 데이터 품질 모니터링**: 데이터 품질 지표를 실시간으로 추적하고 알림 시스템 구축
 - **데이터 증강**: 외부 소스와의 매칭을 통한 데이터 보강
 
-### 3. 시스템 성능 최적화
+### 4. 시스템 성능 최적화
 - 추천 시스템 응답 시간 개선
 - 벡터 검색 성능 최적화
 - 캐싱 전략 도입
 
-### 4. 사용자 경험 개선
+### 5. 사용자 경험 개선
 - 개인화된 대시보드
 - 추천 결과에 대한 사용자 피드백 수집 및 학습
 - 감상문 작성 시 자동 완성 기능
 
-### 5. 테스트 및 품질 관리
-- **단위 테스트 (Unit Test)**: 백엔드 및 AI 서비스의 핵심 로직에 대한 단위 테스트 작성
-- **통합 테스트 (Integration Test)**: API 엔드포인트 및 서비스 간 통합 테스트 구현
-- **테스트 커버리지 향상**: 코드 커버리지 목표 설정 및 CI/CD 파이프라인에 통합
-- **자동화된 테스트 실행**: GitHub Actions 등을 통한 자동 테스트 실행
+### 6. 테스트 및 품질 관리
+- ✅ **단위 테스트 (Unit Test)**: Controller, Service 레이어 단위 테스트 구현 완료
+- ✅ **통합 테스트 (Integration Test)**: UserReview API 엔드투엔드 통합 테스트 구현 완료
+- ⏳ **테스트 커버리지 향상**: 코드 커버리지 목표 설정 및 CI/CD 파이프라인에 통합
+- ⏳ **자동화된 테스트 실행**: GitHub Actions 등을 통한 자동 테스트 실행
+- ⏳ **AI 서비스 테스트**: Python AI 서비스에 대한 단위/통합 테스트 추가
 
-### 6. 사용자 행동 패턴 분석
+### 7. 사용자 행동 패턴 분석
 - **사용자 세션 로깅**: 사용자가 처음 접속하여 나갈 때까지의 전체 페이지 이동 경로 기록
 - **페이지 전환 추적**: 각 페이지 간 이동 시간, 체류 시간, 클릭 이벤트 등 상세 행동 패턴 기록
 - **사용자 여정 분석**: 사용자의 탐색 패턴을 분석하여 사용성 개선 및 추천 정확도 향상에 활용
 - **로그 저장 및 분석 시스템**: 행동 패턴 데이터를 저장하고 분석할 수 있는 백엔드 API 및 대시보드 구축
 
-
-## 🚀 설치 및 실행
-
-### 사전 요구사항
-- Docker & Docker Compose
-
-### 환경 변수 설정
-
-#### 개발 환경
-`backend/.env` 파일을 생성하고 다음 내용을 설정합니다:
-
-```env
-# 프론트엔드 설정
-VITE_API_URL=http://localhost:8080
-
-# 자바 백엔드 설정
-AI_SERVICE_URL=http://ai-api:8000
-
-# AI 서비스 설정
-ALLOWED_ORIGINS=http://localhost:3001,http://localhost:3000
-
-# 데이터베이스 설정 (Supabase)
-SPRING_DATASOURCE_URL=jdbc:postgresql://your-supabase-host:5432/your-database
-SPRING_DATASOURCE_USERNAME=your-username
-SPRING_DATASOURCE_PASSWORD=your-password
-
-# Hugging Face API
-HF_TOKEN=your-hugging-face-token
-
-# Qdrant 설정
-QDRANT_URL=https://your-qdrant-host:6333
-QDRANT_API_KEY=your-qdrant-api-key
-
-# OpenAI API
-OPENAI_API_KEY=your-openai-api-key
-```
-
-### Docker Compose를 이용한 실행
-
-#### 개발 환경
-```bash
-# 전체 서비스 실행
-docker-compose up -d
-
-# 특정 서비스만 실행
-docker-compose up -d java-backend
-docker-compose up -d ai-api
-docker-compose up -d frontend
-```
