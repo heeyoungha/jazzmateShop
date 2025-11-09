@@ -1,6 +1,8 @@
 package shop.jazzmate.jazzmateshop.userReview.dto;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -20,12 +22,15 @@ public class UserReviewRequest {
     @JsonProperty("user_id")
     private String userId;
 
+    @NotBlank(message = "곡명은 필수입니다.")
     @JsonProperty("track_name")
     private String trackName;
 
+    @NotBlank(message = "아티스트명은 필수입니다.")
     @JsonProperty("artist_name")
     private String artistName;
 
+    @NotBlank(message = "감상문 내용은 필수입니다.")
     @JsonProperty("review_content")
     private String reviewContent;
 
