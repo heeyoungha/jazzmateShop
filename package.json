@@ -1,0 +1,23 @@
+{
+  "name": "jazzmateshop",
+  "version": "1.0.0",
+  "description": "재즈 음악 감상문 작성 및 AI 기반 맞춤형 음악 추천 플랫폼",
+  "main": "index.js",
+  "scripts": {},
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/heeyoungha/jazzmateShop.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/heeyoungha/jazzmateShop/issues"
+  },
+  "homepage": "https://github.com/heeyoungha/jazzmateShop#readme",
+  "devDependencies": {
+    "@playwright/test": "^1.56.1",
+    "@types/node": "^24.10.1"
+  }
+}
