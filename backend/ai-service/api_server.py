@@ -15,6 +15,9 @@ load_dotenv()
 # 현재 디렉토리를 Python 경로에 추가
 sys.path.append('/app')
 
+# 추천 함수 import
+from recommend_by_review import recommend_by_review
+
 app = FastAPI(title="JazzMate AI Recommendation API", version="1.0.0")
 
 # CORS 설정
@@ -35,7 +38,8 @@ async def root():
     return {"message": "JazzMate AI Recommendation API", "status": "running"}
 
 @app.post("/recommend/by-review")
-async def recommend_by_review(request: dict):
+async def recommend_by_review_endpoint(request: dict):
+    """감상문 기반 추천 API 엔드포인트"""
     try:
         review_text = request.get("review_text", "")
         review_id = request.get("review_id")
@@ -44,80 +48,26 @@ async def recommend_by_review(request: dict):
         print(f"📝 추천 요청 받음: review_id={review_id}, limit={limit}")
         print(f"📝 감상문 내용: {review_text[:100]}...")
         
-        # recommend_by_review.py 스크립트 실행
-        import subprocess
+        print(f"🚀 추천 함수 호출 시작: review_id={review_id}")
         
-        cmd = [
-            "python3", 
-            "/app/recommend_by_review.py",
-            "--review-text", review_text,
-            "--review-id", str(review_id),
-            "--limit", str(limit)
-        ]
-        
-        print(f"🚀 Python 스크립트 실행: {' '.join(cmd)}")
-        
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=60
+        # 비동기 함수 직접 호출
+        result = await recommend_by_review(
+            review_text=review_text,
+            review_id=review_id,
+            limit=limit
         )
         
-        if result.returncode == 0:
-            print(f"✅ [FastAPI] Python 스크립트 실행 완료: review_id={review_id}")
-            
-            # Python 스크립트 출력에서 JSON 결과 파싱
-            try:
-                import json
-                import re
-                
-                # JSON 부분만 추출 (마지막 { ... } 패턴)
-                json_match = re.search(r'\{.*\}', result.stdout, re.DOTALL)
-                if json_match:
-                    json_str = json_match.group()
-                    python_result = json.loads(json_str)
-                    
-                    if python_result.get("success") and "recommendations" in python_result:
-                        print(f"📊 추천 결과 파싱 성공: {len(python_result['recommendations'])}개")
-                        return python_result
-                    else:
-                        print(f"⚠️ Python 결과에 추천 데이터 없음: {python_result}")
-                        return {
-                            "success": True,
-                            "message": f"추천이 성공적으로 생성되었습니다. (review_id: {review_id})",
-                            "review_id": review_id,
-                            "recommendations": []
-                        }
-                else:
-                    print(f"⚠️ JSON 파싱 실패: {result.stdout}")
-                    return {
-                        "success": True,
-                        "message": f"추천이 성공적으로 생성되었습니다. (review_id: {review_id})",
-                        "review_id": review_id,
-                        "recommendations": []
-                    }
-                    
-            except Exception as parse_error:
-                print(f"❌ JSON 파싱 오류: {parse_error}")
-                return {
-                    "success": True,
-                    "message": f"추천이 성공적으로 생성되었습니다. (review_id: {review_id})",
-                    "review_id": review_id,
-                    "recommendations": []
-                }
+        if result.get("success"):
+            print(f"✅ 추천 처리 완료: review_id={review_id}, 추천 개수={result.get('count', 0)}")
+            return result
         else:
-            print(f"❌ 추천 생성 실패: review_id={review_id}")
-            print(f"📤 Python 오류: {result.stderr}")
-            
-            return {
-                "success": False,
-                "message": f"추천 생성에 실패했습니다: {result.stderr}",
-                "review_id": review_id
-            }
+            print(f"❌ 추천 처리 실패: review_id={review_id}, 오류={result.get('error', 'Unknown')}")
+            return result
         
     except Exception as e:
         print(f"❌ 추천 오류: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return {
             "success": False,
             "error": str(e),
@@ -127,6 +77,57 @@ async def recommend_by_review(request: dict):
 @app.get("/health")
 async def health_check():
     return {"status": "healthy", "service": "JazzMate AI Recommendation API"}
+
+@app.get("/admin/failed-recommendation-reasons")
+async def get_failed_recommendation_reasons():
+    """추천사유 생성 실패 데이터 조회"""
+    try:
+        from services.recommendation_reason_service import RecommendationReasonService
+        
+        reason_service = RecommendationReasonService()
+        count = reason_service.get_failed_data_count()
+        summary = reason_service.get_failed_data_summary()
+        
+        return {
+            "success": True,
+            "count": count,
+            "data": summary
+        }
+    except Exception as e:
+        print(f"❌ 실패 데이터 조회 오류: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return {
+            "success": False,
+            "error": str(e),
+            "count": 0,
+            "data": []
+        }
+
+@app.post("/admin/retry-failed-recommendation-reasons")
+async def retry_failed_recommendation_reasons(request: dict = None):
+    """실패한 추천사유 생성 재시도"""
+    try:
+        from services.recommendation_reason_service import RecommendationReasonService
+        
+        max_retries = request.get("max_retries", 3) if request else 3
+        
+        reason_service = RecommendationReasonService()
+        results = await reason_service.retry_failed_reason_generation(max_retries=max_retries)
+        
+        return {
+            "success": True,
+            "results": results,
+            "message": f"재시도 완료: 성공 {results['success']}개, 실패 {results['failed']}개, 건너뜀 {results['skipped']}개"
+        }
+    except Exception as e:
+        print(f"❌ 재시도 오류: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return {
+            "success": False,
+            "error": str(e)
+        }
 
 @app.get("/admin/data-quality")
 async def get_data_quality():
