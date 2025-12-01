@@ -171,6 +171,19 @@ async def recommend_by_review(review_text: str, review_id: int = None, limit: in
                 
             except Exception as e:
                 print(f"⚠️ 추천사유 생성 실패: {e}")
+                
+                # 추천사유 생성 실패 데이터 저장 (나중에 재시도용)
+                payload = rec.get("payload", {})
+                if review_id:
+                    reason_service.save_failed_reason_generation(
+                        review_id=review_id,
+                        track_id=None,  # 아직 DB에 저장되지 않아 track_id를 모름
+                        user_review=review_text,
+                        recommended_track=payload,
+                        error_message=str(e),
+                        score=rec.get("score")
+                    )
+                
                 # 추천사유 생성 실패 시 기본 메시지 사용
                 rec_with_reason = rec.copy()
                 rec_with_reason["reason"] = f"감상문과 유사한 스타일의 곡입니다. (유사도: {rec.get('score', 0.0)*100:.1f}%)"
@@ -189,25 +202,29 @@ async def recommend_by_review(review_text: str, review_id: int = None, limit: in
         else:
             print("ℹ️ review_id가 없어 DB 저장을 건너뜁니다.")
         
-        # 결과를 JSON 형태로 반환
+        # 결과를 dict 형태로 반환
         result = {
             "success": True,
             "recommendations": recommendations_with_reasons,
             "count": len(recommendations_with_reasons)
         }
         
-        print(f"📤 Python 스크립트 실행 완료: review_id={review_id}")
+        print(f"📤 추천 처리 완료: review_id={review_id}")
         
         await qdrant_service.disconnect()
         
+        return result
+        
     except Exception as e:
         print(f"❌ 추천 실패: {e}")
+        import traceback
+        traceback.print_exc()
         error_result = {
             "success": False,
             "error": str(e),
-            "recommendations": []
+            "recommendations": []  # API 응답 구조 일관성 유지
         }
-        print(json.dumps(error_result, ensure_ascii=False, indent=2))
+        return error_result
 
 def main():
     parser = argparse.ArgumentParser(description='감상문 기반 곡 추천')

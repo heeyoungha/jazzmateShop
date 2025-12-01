@@ -4,7 +4,9 @@
 """
 
 import os
-from typing import Dict, List, Any
+import pickle
+from datetime import datetime
+from typing import Dict, List, Any, Optional
 
 from langchain_openai import ChatOpenAI
 from langchain.prompts import ChatPromptTemplate, SystemMessagePromptTemplate, HumanMessagePromptTemplate
@@ -13,6 +15,8 @@ class RecommendationReasonService:
     def __init__(self):
         self.similarity_threshold = 0.3  # 유사도 임계값
         self.openai_api_key = os.getenv("OPENAI_API_KEY")
+        self.failed_data_file = "failed_recommendation_reasons.pkl"
+        self.failed_data = self._load_failed_data()
         
         # LangChain LLM 초기화 (자동 재시도 포함)
         self.llm = ChatOpenAI(
@@ -167,6 +171,7 @@ class RecommendationReasonService:
         except Exception as e:
             print(f"❌ LLM 추천 사유 생성 실패 (비동기): {e}")
             # 오류 발생 시 폴백 반환
+            # 실패 데이터 저장은 호출하는 쪽에서 처리 (review_id 등 추가 정보 필요)
             return self._generate_fallback_reason(user_review, recommended_track)
     
     def _is_fallback_reason_sufficient(self, reason: str) -> bool:
@@ -289,4 +294,151 @@ class RecommendationReasonService:
             if keyword in track_features:
                 common.append(keyword)
         return common
+    
+    # ============================================
+    # 실패 데이터 관리 메서드
+    # ============================================
+    
+    def _load_failed_data(self) -> List[Dict[str, Any]]:
+        """실패한 데이터 로드"""
+        try:
+            if os.path.exists(self.failed_data_file):
+                with open(self.failed_data_file, 'rb') as f:
+                    return pickle.load(f)
+        except Exception as e:
+            print(f"⚠️ 실패 데이터 로드 실패: {e}")
+        return []
+    
+    def save_failed_reason_generation(
+        self,
+        review_id: int,
+        track_id: Optional[int],
+        user_review: str,
+        recommended_track: Dict[str, Any],
+        error_message: str,
+        score: Optional[float] = None
+    ):
+        """
+        추천사유 생성 실패 데이터 저장
+        
+        Args:
+            review_id: 사용자 리뷰 ID
+            track_id: 추천된 트랙 ID (DB 저장 후 알 수 있음, 없으면 None)
+            user_review: 사용자 감상문
+            recommended_track: 추천된 트랙 정보 (payload)
+            error_message: 실패 원인
+            score: 추천 점수 (선택사항)
+        """
+        try:
+            track_title = recommended_track.get("track_title", recommended_track.get("album_title", "Unknown"))
+            artist_name = recommended_track.get("track_artist", recommended_track.get("album_artist", "Unknown"))
+            
+            failed_item = {
+                'review_id': review_id,
+                'track_id': track_id,
+                'user_review': user_review,
+                'recommended_track': recommended_track,
+                'error_message': error_message,
+                'score': score,
+                'timestamp': datetime.now().isoformat(),
+                'retry_count': 0,
+                'track_info': {
+                    'track_title': track_title,
+                    'artist_name': artist_name,
+                    'album_title': recommended_track.get("album_title", "Unknown")
+                }
+            }
+            self.failed_data.append(failed_item)
+            
+            with open(self.failed_data_file, 'wb') as f:
+                pickle.dump(self.failed_data, f)
+            
+            print(f"📝 추천사유 생성 실패 데이터 저장됨: review_id={review_id}, track={artist_name} - {track_title}")
+        except Exception as e:
+            print(f"⚠️ 실패 데이터 저장 실패: {e}")
+    
+    def get_failed_data_count(self) -> int:
+        """실패한 데이터 개수 반환"""
+        return len(self.failed_data)
+    
+    def get_failed_data_summary(self) -> List[Dict[str, Any]]:
+        """실패한 데이터 요약 반환"""
+        summary = []
+        for item in self.failed_data:
+            track_info = item.get('track_info', {})
+            summary.append({
+                'review_id': item.get('review_id'),
+                'track_id': item.get('track_id'),
+                'track_title': track_info.get('track_title', 'Unknown'),
+                'artist_name': track_info.get('artist_name', 'Unknown'),
+                'error': item.get('error_message', 'Unknown'),
+                'timestamp': item.get('timestamp'),
+                'retry_count': item.get('retry_count', 0)
+            })
+        return summary
+    
+    async def retry_failed_reason_generation(self, max_retries: int = 3) -> Dict[str, int]:
+        """
+        실패한 추천사유 생성 재시도
+        
+        Args:
+            max_retries: 최대 재시도 횟수
+            
+        Returns:
+            재시도 결과 통계
+        """
+        retry_results = {'success': 0, 'failed': 0, 'skipped': 0}
+        
+        for item in self.failed_data[:]:  # 복사본으로 순회
+            if item['retry_count'] >= max_retries:
+                retry_results['skipped'] += 1
+                continue
+            
+            try:
+                user_review = item['user_review']
+                recommended_track = item['recommended_track']
+                
+                # 추천사유 재생성 시도
+                reason = await self.generate_recommendation_reason_with_llm_async(
+                    user_review=user_review,
+                    recommended_track=recommended_track
+                )
+                
+                if reason and not reason.startswith("'") and len(reason) > 20:
+                    # 성공적으로 생성된 경우 (폴백 메시지가 아닌 경우)
+                    # 실패 목록에서 제거
+                    self.failed_data.remove(item)
+                    retry_results['success'] += 1
+                    
+                    track_info = item.get('track_info', {})
+                    print(f"✅ 추천사유 재생성 성공: review_id={item.get('review_id')}, track={track_info.get('artist_name')} - {track_info.get('track_title')}")
+                else:
+                    # 여전히 실패한 경우 재시도 횟수 증가
+                    item['retry_count'] += 1
+                    retry_results['failed'] += 1
+                    print(f"⚠️ 추천사유 재생성 실패: review_id={item.get('review_id')}")
+                    
+            except Exception as e:
+                item['retry_count'] += 1
+                retry_results['failed'] += 1
+                print(f"⚠️ 재시도 중 오류: {e}")
+        
+        # 업데이트된 실패 데이터 저장
+        try:
+            with open(self.failed_data_file, 'wb') as f:
+                pickle.dump(self.failed_data, f)
+        except Exception as e:
+            print(f"⚠️ 실패 데이터 저장 실패: {e}")
+        
+        return retry_results
+    
+    def clear_failed_data(self):
+        """실패한 데이터 초기화"""
+        self.failed_data = []
+        try:
+            if os.path.exists(self.failed_data_file):
+                os.remove(self.failed_data_file)
+            print("🗑️ 실패한 추천사유 데이터 초기화 완료")
+        except Exception as e:
+            print(f"⚠️ 실패 데이터 초기화 실패: {e}")
     
