@@ -1,0 +1,79 @@
+FROM apache/airflow:2.8.0-python3.11
+
+USER root
+
+# Playwright Chromium 공식 의존성 설치
+# Reference: https://playwright.dev/docs/docker
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    # Core Chromium dependencies
+    libnss3 \
+    libnspr4 \
+    libatk1.0-0 \
+    libatk-bridge2.0-0 \
+    libcups2 \
+    libdrm2 \
+    libdbus-1-3 \
+    libxkbcommon0 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxfixes3 \
+    libxrandr2 \
+    libgbm1 \
+    libasound2 \
+    libxshmfence1 \
+    # X11 and display
+    libx11-6 \
+    libx11-xcb1 \
+    libxcb1 \
+    libxcb-dri3-0 \
+    libxext6 \
+    libxss1 \
+    # Fonts (중요!)
+    fonts-liberation \
+    fonts-noto-color-emoji \
+    fonts-unifont \
+    fonts-ipafont-gothic \
+    fonts-wqy-zenhei \
+    fonts-thai-tlwg \
+    fonts-kacst \
+    fonts-freefont-ttf \
+    # Rendering
+    libpango-1.0-0 \
+    libcairo2 \
+    libgdk-pixbuf2.0-0 \
+    libgtk-3-0 \
+    # Xvfb (가상 디스플레이 - Headful 모드 지원)
+    xvfb \
+    # Utils
+    xdg-utils \
+    wget \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# airflow 유저로 전환
+USER airflow
+
+# Python 패키지 설치 (Docker layer 캐싱 최적화)
+# 베이스 패키지 먼저 설치 (자주 변경되지 않음 - 캐시 활용)
+COPY requirements-base.txt /requirements-base.txt
+RUN pip install --default-timeout=1000 --no-cache-dir -r /requirements-base.txt
+
+# 앱 패키지 나중에 설치 (변경 시에만 재빌드)
+COPY requirements-app.txt /requirements-app.txt
+RUN pip install --default-timeout=1000 --no-cache-dir -r /requirements-app.txt
+
+# Playwright Chromium 브라우저 설치 
+RUN python -m playwright install chromium
+
+# 프로젝트 모듈 복사
+COPY --chown=airflow:root dags /opt/airflow/dags
+COPY --chown=airflow:root pipeline_services /opt/airflow/pipeline_services
+
+# Xvfb entrypoint 스크립트 복사
+USER root
+COPY scripts/entrypoint-xvfb.sh /entrypoint-xvfb.sh
+RUN chmod +x /entrypoint-xvfb.sh
+USER airflow
+
+# 환경 변수 설정
+ENV DISPLAY=:99

@@ -1,0 +1,12 @@
+# 베이스 패키지 (자주 변경되지 않음 - Docker layer 캐싱 활용)
+# Airflow 관련 패키지
+apache-airflow[celery,redis]==2.8.0
+apache-airflow-providers-apache-kafka
+apache-airflow-providers-postgres
+psycopg2-binary
+celery>=5.3.0
+redis>=5.0.0
+flower>=2.0.0
+
+
+

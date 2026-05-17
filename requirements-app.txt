@@ -1,0 +1,19 @@
+# 앱 패키지 (자주 변경됨)
+numpy<2.0
+pandas
+requests
+python-dotenv
+pydantic>=2.0.0
+playwright>=1.40.0
+playwright-stealth>=1.0.0
+
+# 데이터베이스 (supabase 고정: storage3→pyiceberg 의존성으로 DAG import 타임아웃 방지)
+supabase>=2.0.0,<2.9.0
+qdrant-client>=1.9.0  # Python 3.11 호환성 개선
+grpcio>=1.60.0        # ← 추가
+grpcio-tools>=1.60.0  # ← 추가
+protobuf>=4.25.0,<6.0.0  # Google Cloud Provider 호환성 (MessageMapContainer 에러 해결)
+
+# AI/ML
+openai>=1.0.0
+
