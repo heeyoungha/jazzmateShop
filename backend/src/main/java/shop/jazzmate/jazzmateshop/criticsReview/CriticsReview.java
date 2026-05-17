@@ -2,44 +2,30 @@ package shop.jazzmate.jazzmateshop.criticsReview;
 
 import jakarta.persistence.*;
 import lombok.Data;
-import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 @Entity
-@Table(name = "critics_review")
+@Table(name = "v_review_summary")
 @Data
 public class CriticsReview {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Integer id;
+    private UUID id;
 
     private String title;
     private String reviewer;
-    private String date;
 
-    @Column(name = "url", length = 1000)  // 길이 늘리기
-    private String url;
+    @Column(name = "published_date")
+    private String date;
 
     @Column(columnDefinition = "text")
     private String content;
 
-    @Column(columnDefinition = "text")
-    private String albumInfo;
-
-    @Column(columnDefinition = "text")
-    private String youtubeInfo;
-
-    private BigDecimal rating;
-
-    @Column(columnDefinition = "text")
-    private String trackListing;
-
-    @Column(columnDefinition = "text")
-    private String personnel;
-
-    @Column(columnDefinition = "text")
+    @Column(name = "review_summary", columnDefinition = "text")
     private String reviewSummary;
+
+    private String url;
 
     private LocalDateTime createdAt;
 }

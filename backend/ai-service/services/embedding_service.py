@@ -3,80 +3,45 @@ import os
 import pickle
 from datetime import datetime
 from typing import List, Dict, Any, Optional
-from huggingface_hub import InferenceClient
+from openai import AsyncOpenAI
 
 class EmbeddingService:
     def __init__(self):
         self.client = None
         self.failed_data_file = "failed_embeddings.pkl"
         self.failed_data = self._load_failed_data()
-        
+
     async def initialize(self):
         """임베딩 서비스 초기화"""
-        # API 키 확인
-        api_key = os.getenv('HF_TOKEN')  # 환경변수 이름 변경
+        api_key = os.getenv('OPENAI_API_KEY')
         if not api_key:
-            print("⚠️ HF_TOKEN이 설정되지 않았습니다.")
+            print("⚠️ OPENAI_API_KEY가 설정되지 않았습니다.")
             self.client = None
             return
-            
+
         try:
-            self.client = InferenceClient(
-                token=api_key
-            )
+            self.client = AsyncOpenAI(api_key=api_key)
             print("✅ Hugging Face 임베딩 서비스 초기화 완료")
         except Exception as e:
-            print(f"❌ Hugging Face 클라이언트 초기화 실패: {e}")
+            print(f"❌ OpenAI 클라이언트 초기화 실패: {e}")
             self.client = None
-    
+
     async def get_embedding(self, track_data: Dict[str, Any]) -> Optional[List[float]]:
-        """단일 임베딩 생성"""
+        """단일 임베딩 생성 (text-embedding-3-small, 1536차원)"""
         if not self.client:
-            error_msg = "HF_TOKEN이 설정되지 않았습니다."
-            print(f"❌ {error_msg}")
-            self._save_failed_data(track_data, error_msg)
+            print("❌ OpenAI 클라이언트가 초기화되지 않았습니다.")
             return None
-            
+
         try:
-            import requests
-            
             text = self._create_text(track_data)
-            
-            # E5 모델은 특별한 프롬프트 형식 필요
-            if not text.startswith("query: ") and not text.startswith("passage: "):
-                text = f"query: {text}"
-            
-            # 직접 API 호출 시도
-            api_key = os.getenv('HF_TOKEN')
-            headers = {"Authorization": f"Bearer {api_key}"}
-            
-            # Inference API 엔드포인트
-            api_url = "https://api-inference.huggingface.co/models/intfloat/multilingual-e5-large"
-            
-            response = requests.post(
-                api_url,
-                headers=headers,
-                json={"inputs": text},
-                timeout=30
+            response = await self.client.embeddings.create(
+                model="text-embedding-3-small",
+                input=text
             )
-            
-            response.raise_for_status()
-            result = response.json()
-            
-            # 결과가 리스트인 경우
-            if isinstance(result, list):
-                # E5 모델은 보통 첫 번째 요소가 임베딩 벡터
-                if len(result) > 0 and isinstance(result[0], list):
-                    return result[0]
-                return result
-            
-            return result
-        
-            
+            return response.data[0].embedding
+
         except Exception as e:
-            error_msg = f"임베딩 생성 실패: {str(e)}"
-            print(f"❌ {error_msg}")
-            # 임베딩 없이는 저장하지 않음
+            print(f"❌ 임베딩 생성 실패: {e}")
             return None
     
     async def get_embeddings_batch(self, track_data_list: List[Dict[str, Any]]) -> List[Optional[List[float]]]:

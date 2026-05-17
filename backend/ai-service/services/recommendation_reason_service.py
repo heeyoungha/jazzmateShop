@@ -312,10 +312,10 @@ class RecommendationReasonService:
     def save_failed_reason_generation(
         self,
         review_id: int,
-        track_id: Optional[int],
         user_review: str,
         recommended_track: Dict[str, Any],
         error_message: str,
+        track_id: Optional[int] = None,
         score: Optional[float] = None
     ):
         """
@@ -323,10 +323,10 @@ class RecommendationReasonService:
         
         Args:
             review_id: 사용자 리뷰 ID
-            track_id: 추천된 트랙 ID (DB 저장 후 알 수 있음, 없으면 None)
             user_review: 사용자 감상문
             recommended_track: 추천된 트랙 정보 (payload)
             error_message: 실패 원인
+            track_id: 추천된 트랙 ID (선택사항, DB 저장 후 알 수 있음)
             score: 추천 점수 (선택사항)
         """
         try:

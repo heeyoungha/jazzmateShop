@@ -28,6 +28,6 @@ public interface RecommendTrackRepository extends JpaRepository<RecommendTrack, 
     /**
      * 특정 감상문과 트랙의 추천 결과 조회 (중복 체크용)
      */
-    Optional<RecommendTrack> findByUserReviewIdAndTrackId(Integer userReviewId, Integer trackId);
+    List<RecommendTrack> findByUserReviewIdAndTrackId(Integer userReviewId, Integer trackId);
 }
 

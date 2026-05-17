@@ -11,7 +11,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.web.bind.annotation.RequestParam;
 
-import java.util.List;
+import java.util.UUID;
 
 @RestController
 @RequiredArgsConstructor
@@ -28,8 +28,9 @@ public class CriticsReviewController {
         Pageable pageable = PageRequest.of(page, size);
         return repository.findByReviewSummaryIsNotNull(pageable);
     }
+
     @GetMapping("/{id}")
-    public CriticsReview getById(@PathVariable Integer id) {
+    public CriticsReview getById(@PathVariable UUID id) {
         return repository.findById(id).orElseThrow();
     }
 }

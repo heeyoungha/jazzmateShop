@@ -177,7 +177,6 @@ async def recommend_by_review(review_text: str, review_id: int = None, limit: in
                 if review_id:
                     reason_service.save_failed_reason_generation(
                         review_id=review_id,
-                        track_id=None,  # 아직 DB에 저장되지 않아 track_id를 모름
                         user_review=review_text,
                         recommended_track=payload,
                         error_message=str(e),

@@ -1,5 +1,5 @@
 # Java 백엔드용 Dockerfile (로컬 방식과 동일)
-FROM openjdk:17-jdk-slim
+FROM eclipse-temurin:17-jdk
 
 # 작업 디렉토리 설정
 WORKDIR /app

@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 import asyncio
@@ -7,6 +7,7 @@ import sys
 from dotenv import load_dotenv
 import pandas as pd
 import json
+import httpx
 from typing import Optional
 
 # 환경 변수 로드
@@ -15,8 +16,10 @@ load_dotenv()
 # 현재 디렉토리를 Python 경로에 추가
 sys.path.append('/app')
 
-# 추천 함수 import
-from recommend_by_review import recommend_by_review
+# 서비스 import
+from services.qdrant_service import QdrantService
+from services.recommendation_reason_service import RecommendationReasonService
+from services.embedding_service import EmbeddingService
 
 app = FastAPI(title="JazzMate AI Recommendation API", version="1.0.0")
 
@@ -33,39 +36,208 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# FastAPI Dependency Injection
+def get_reason_service() -> RecommendationReasonService:
+    """RecommendationReasonService 의존성 주입"""
+    return RecommendationReasonService()
+
+async def get_embedding_service() -> EmbeddingService:
+    """EmbeddingService 의존성 주입 (초기화 포함)"""
+    embedding_service = EmbeddingService()
+    await embedding_service.initialize()
+    return embedding_service
+
+async def get_qdrant_service(
+    embedding_service: EmbeddingService = Depends(get_embedding_service)
+) -> QdrantService:
+    """QdrantService 의존성 주입 (초기화 포함)"""
+    qdrant_service = QdrantService(embedding_service=embedding_service)
+    await qdrant_service.initialize()
+    return qdrant_service
+
 @app.get("/")
 async def root():
     return {"message": "JazzMate AI Recommendation API", "status": "running"}
 
+async def save_single_recommendation(
+    client: httpx.AsyncClient,
+    backend_url: str,
+    review_id: int,
+    rec: dict
+) -> bool:
+    """단일 추천 결과 저장"""
+    try:
+        payload = rec.get("payload", {})
+        track_data = {
+            "trackTitle": payload.get("album_title", "Unknown"),
+            "artistName": payload.get("album_artist", "Unknown"),
+            "genre": payload.get("genre"),
+            "mood": payload.get("mood"),
+            "energy": payload.get("energy"),
+            "bpm": payload.get("bpm"),
+            "vocalStyle": payload.get("vocal_style"),
+            "instrumentation": payload.get("instrumentation")
+        }
+        
+        # Track 저장
+        track_response = await client.post(
+            f"{backend_url}/api/tracks",
+            json=track_data,
+            headers={"Content-Type": "application/json"}
+        )
+        track_response.raise_for_status()
+        track_id = track_response.json()["id"]
+        
+        # RecommendTrack 저장
+        recommend_data = {
+            "userReviewId": review_id,
+            "trackId": track_id,
+            "recommendationScore": rec.get("score", 0.0),
+            "recommendationReason": rec.get("reason", "감상문과 유사한 스타일의 곡입니다.")
+        }
+        
+        recommend_response = await client.post(
+            f"{backend_url}/api/recommend-tracks",
+            json=recommend_data,
+            headers={"Content-Type": "application/json"}
+        )
+        recommend_response.raise_for_status()
+        
+        print(f"✅ 저장 완료: {track_data['artistName']} - {track_data['trackTitle']}")
+        return True
+        
+    except Exception as e:
+        # 에러 메시지에 모든 정보가 포함됨 (타입, 상태코드 등)
+        print(f"❌ 저장 실패: {e}")
+        return False
+
+
+async def save_recommendations_to_db(review_id: int, recommendations: list, user_review_text: str):
+    """추천 결과를 Java 백엔드 DB에 저장"""
+    if not recommendations:
+        print("저장할 추천 결과가 없습니다.")
+        return
+    
+    backend_url = "http://java-backend:8080"
+    
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        tasks = [
+            save_single_recommendation(client, backend_url, review_id, rec)
+            for rec in recommendations
+        ]
+        results = await asyncio.gather(*tasks)
+        
+        saved_count = sum(results)
+        failed_count = len(results) - saved_count
+        
+        print(f"💾 저장 완료: 성공 {saved_count}개, 실패 {failed_count}개 (review_id: {review_id})")
+
+
+async def generate_reason_for_recommendation(
+    rec: dict,
+    review_text: str,
+    review_id: Optional[int],
+    reason_service: RecommendationReasonService
+) -> dict:
+    """개별 추천에 대한 사유 생성"""
+    try:
+        payload = rec.get("payload", {})
+        print(f"🔍 추천 데이터 확인: {payload.get('track_artist', 'Unknown')} - {payload.get('track_title', 'Unknown')}")
+        
+        reason = await reason_service.generate_recommendation_reason_with_llm_async(
+            user_review=review_text,
+            recommended_track=payload
+        )
+        
+        rec_with_reason = rec.copy()
+        rec_with_reason["reason"] = reason
+        print(f"💡 추천사유 생성: {reason[:50]}...")
+        return rec_with_reason
+        
+    except Exception as e:
+        print(f"⚠️ 추천사유 생성 실패: {e}")
+        
+        # 추천사유 생성 실패 데이터 저장 (나중에 재시도용)
+        payload = rec.get("payload", {})
+        if review_id:
+            reason_service.save_failed_reason_generation(
+                review_id=review_id,
+                user_review=review_text,
+                recommended_track=payload,
+                error_message=str(e),
+                score=rec.get("score")
+            )
+        
+        # 추천사유 생성 실패 시 기본 메시지 사용
+        rec_with_reason = rec.copy()
+        rec_with_reason["reason"] = f"감상문과 유사한 스타일의 곡입니다. (유사도: {rec.get('score', 0.0)*100:.1f}%)"
+        return rec_with_reason
+
+
 @app.post("/recommend/by-review")
-async def recommend_by_review_endpoint(request: dict):
+async def recommend_by_review_endpoint(
+    request: dict,
+    reason_service: RecommendationReasonService = Depends(get_reason_service),
+    qdrant_service: QdrantService = Depends(get_qdrant_service)
+):
     """감상문 기반 추천 API 엔드포인트"""
     try:
-        review_text = request.get("review_text", "")
+        # 요청 데이터 추출 및 검증
+        review_text = request.get("review_text", "").strip()
         review_id = request.get("review_id")
         limit = request.get("limit", 3)
         
+        # Validation: review_id 필수
+        if review_id is None:
+            raise HTTPException(
+                status_code=400,
+                detail="review_id는 필수입니다."
+            )
+        
         print(f"📝 추천 요청 받음: review_id={review_id}, limit={limit}")
         print(f"📝 감상문 내용: {review_text[:100]}...")
+        print(f"🎵 감상문 기반 추천 시작: {len(review_text)}자")
         
-        print(f"🚀 추천 함수 호출 시작: review_id={review_id}")
-        
-        # 비동기 함수 직접 호출
-        result = await recommend_by_review(
-            review_text=review_text,
-            review_id=review_id,
+        # 감상문 기반 추천 실행
+        recommendations = await qdrant_service.recommend_tracks_by_content(
+            artist="",
+            metadata={},
+            content=review_text,
+            review_summary="",
+            lyrics="",
             limit=limit
         )
         
-        if result.get("success"):
-            print(f"✅ 추천 처리 완료: review_id={review_id}, 추천 개수={result.get('count', 0)}")
-            return result
-        else:
-            print(f"❌ 추천 처리 실패: review_id={review_id}, 오류={result.get('error', 'Unknown')}")
-            return result
+        print(f"✅ 추천 완료: {len(recommendations)}개 곡")
+        
+        # 추천사유 생성 (병렬 처리로 속도 개선)
+        
+        # 병렬 처리로 모든 추천 사유를 동시에 생성
+        print(f"🚀 병렬로 추천 사유 생성 시작: {len(recommendations)}개")
+        tasks = [
+            generate_reason_for_recommendation(rec, review_text, review_id, reason_service)
+            for rec in recommendations
+        ]
+        recommendations_with_reasons = await asyncio.gather(*tasks)
+        
+        # DB에 저장 (review_id는 이미 검증됨)
+        print(f"💾 DB 저장 시작: review_id={review_id}, 추천 개수={len(recommendations_with_reasons)}")
+        await save_recommendations_to_db(review_id, recommendations_with_reasons, review_text)
+        print(f"✅ DB 저장 완료: review_id={review_id}")
+        
+        # 결과를 dict 형태로 반환
+        result = {
+            "success": True,
+            "recommendations": recommendations_with_reasons,
+            "count": len(recommendations_with_reasons)
+        }
+        
+        print(f"📤 추천 처리 완료: review_id={review_id}")
+        
+        return result
         
     except Exception as e:
-        print(f"❌ 추천 오류: {str(e)}")
+        print(f"❌ 추천 실패: {e}")
         import traceback
         traceback.print_exc()
         return {

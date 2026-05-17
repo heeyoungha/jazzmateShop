@@ -16,8 +16,8 @@ public interface TrackRepository extends JpaRepository<Track, Integer> {
      * 아티스트명과 트랙명으로 트랙 검색
      */
     @Query("SELECT t FROM Track t WHERE t.artistName = :artistName AND t.trackTitle = :trackTitle")
-    Optional<Track> findByArtistNameAndTrackTitle(@Param("artistName") String artistName, 
-                                                  @Param("trackTitle") String trackTitle);
+    List<Track> findByArtistNameAndTrackTitle(@Param("artistName") String artistName,
+                                              @Param("trackTitle") String trackTitle);
     
     /**
      * 아티스트명으로 트랙 검색
@@ -29,3 +29,4 @@ public interface TrackRepository extends JpaRepository<Track, Integer> {
      */
     List<Track> findByTrackTitleContainingIgnoreCase(String trackTitle);
 }
+

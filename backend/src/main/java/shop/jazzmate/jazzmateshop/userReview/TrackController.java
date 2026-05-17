@@ -7,6 +7,7 @@ import org.springframework.web.bind.annotation.*;
 import shop.jazzmate.jazzmateshop.userReview.entity.Track;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 
 @RestController
@@ -26,13 +27,13 @@ public class TrackController {
             log.info("Track 생성 요청: {} - {}", track.getArtistName(), track.getTrackTitle());
             
             // 기존 Track 확인
-            Optional<Track> existingTrack = trackRepository.findByArtistNameAndTrackTitle(
+            List<Track> existingTracks = trackRepository.findByArtistNameAndTrackTitle(
                 track.getArtistName(), track.getTrackTitle()
             );
-            
-            if (existingTrack.isPresent()) {
-                log.info("기존 Track 반환: {}", existingTrack.get().getId());
-                return ResponseEntity.ok(existingTrack.get());
+
+            if (!existingTracks.isEmpty()) {
+                log.info("기존 Track 반환: {}", existingTracks.get(0).getId());
+                return ResponseEntity.ok(existingTracks.get(0));
             }
             
             // 새 Track 생성
