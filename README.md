@@ -2,6 +2,10 @@
 
 AllAboutJazz 재즈 리뷰를 수집하고, GPT 요약과 임베딩을 거쳐 Supabase에 저장하는 Airflow 기반 데이터 파이프라인.
 
+## 프로젝트 바로가기                                                                      
+                                                                                          
+[https://actlog.shop/](https://actlog.shop/)   
+
 ## 기술 스택
 
 | 역할 | 기술 |
