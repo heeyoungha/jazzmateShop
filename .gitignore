@@ -322,3 +322,13 @@ dmypy.json
 
 #pem키
 jazzmate.pem
+
+# Playwright
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+/playwright/.auth/
+e2e/test-results/
+e2e/screenshots/
+e2e/.env
