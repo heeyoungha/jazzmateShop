@@ -9,7 +9,7 @@ plugins/
 *.egg-info/
 jazzmate2026/
 
-pipeline_services
+# pipeline_services
 config
 migrations
 dags/crawling
