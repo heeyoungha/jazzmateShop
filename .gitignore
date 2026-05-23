@@ -9,8 +9,10 @@ plugins/
 *.egg-info/
 jazzmate2026/
 
-# pipeline_services
-config
-migrations
-dags/crawling
+# pipeline
+pipeline/config
+pipeline/migrations
+pipeline/dags/crawling
+backendJava/migrations
 temp
+.idea
