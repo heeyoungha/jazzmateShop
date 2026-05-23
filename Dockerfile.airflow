@@ -55,19 +55,19 @@ USER airflow
 
 # Python 패키지 설치 (Docker layer 캐싱 최적화)
 # 베이스 패키지 먼저 설치 (자주 변경되지 않음 - 캐시 활용)
-COPY requirements-base.txt /requirements-base.txt
+COPY pipeline/requirements-base.txt /requirements-base.txt
 RUN pip install --default-timeout=1000 --no-cache-dir -r /requirements-base.txt
 
 # 앱 패키지 나중에 설치 (변경 시에만 재빌드)
-COPY requirements-app.txt /requirements-app.txt
+COPY pipeline/requirements-app.txt /requirements-app.txt
 RUN pip install --default-timeout=1000 --no-cache-dir -r /requirements-app.txt
 
 # Playwright Chromium 브라우저 설치 
 RUN python -m playwright install chromium
 
 # 프로젝트 모듈 복사
-COPY --chown=airflow:root dags /opt/airflow/dags
-COPY --chown=airflow:root pipeline_services /opt/airflow/pipeline_services
+COPY --chown=airflow:root pipeline/dags /opt/airflow/pipeline/dags
+COPY --chown=airflow:root pipeline/pipeline_services /opt/airflow/pipeline/pipeline_services
 
 # Xvfb entrypoint 스크립트 복사
 USER root

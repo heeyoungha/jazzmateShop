@@ -1,7 +1,9 @@
 ---
 x-airflow-common:
   &airflow-common
-  build: .
+  build:
+    context: .
+    dockerfile: Dockerfile.airflow
   shm_size: '2gb'  # Playwright/Chromium을 위한 공유 메모리 증가
   env_file:
     - ${ENV_FILE_PATH:-.env}
@@ -16,24 +18,24 @@ x-airflow-common:
     AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
     AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: 'true'
     _PIP_ADDITIONAL_REQUIREMENTS: ${_PIP_ADDITIONAL_REQUIREMENTS:-}
-    AIRFLOW_CONFIG: '/opt/airflow/config/airflow.cfg'
+    AIRFLOW_CONFIG: '/opt/airflow/pipeline/config/airflow.cfg'
     # Playwright 환경 변수 (Docker 최적화)
     PLAYWRIGHT_BROWSERS_PATH: '/home/airflow/.cache/ms-playwright'
     PLAYWRIGHT_CHROMIUM_DISABLE_SANDBOX: '1'
     # DAG Processor 독립 실행 활성화 (Airflow 2.8+)
     AIRFLOW__SCHEDULER__STANDALONE_DAG_PROCESSOR: 'true'
     # Python 모듈 경로 추가 (pipeline_services 사용)
-    PYTHONPATH: '/opt/airflow:/opt/airflow/dags'
+    PYTHONPATH: '/opt/airflow:/opt/airflow/pipeline/dags'
     # Webserver 워커 수 제한 (메모리 절약)
     AIRFLOW__WEBSERVER__WORKERS: '2'
     AIRFLOW__WEBSERVER__WORKER_REFRESH_INTERVAL: '1800'
     OPENAI_API_KEY: ${OPENAI_API_KEY}
   volumes:
-    - ${AIRFLOW_PROJ_DIR:-.}/dags:/opt/airflow/dags
+    - ${AIRFLOW_PROJ_DIR:-.}/pipeline/dags:/opt/airflow/pipeline/dags
     - ${AIRFLOW_PROJ_DIR:-.}/logs:/opt/airflow/logs
-    - ${AIRFLOW_PROJ_DIR:-.}/config:/opt/airflow/config
+    - ${AIRFLOW_PROJ_DIR:-.}/pipeline/config:/opt/airflow/pipeline/config
     - ${AIRFLOW_PROJ_DIR:-.}/plugins:/opt/airflow/plugins
-    - ${AIRFLOW_PROJ_DIR:-.}/pipeline_services:/opt/airflow/pipeline_services  # 코드 변경 즉시 반영
+    - ${AIRFLOW_PROJ_DIR:-.}/pipeline/pipeline_services:/opt/airflow/pipeline/pipeline_services  # 코드 변경 즉시 반영
     - ${AIRFLOW_PROJ_DIR:-.}/data:/opt/airflow/data  # 크롤링한 HTML 파일 로컬에서 확인 가능
     - ${AIRFLOW_PROJ_DIR:-.}/data:/data
   user: "${AIRFLOW_UID:-50000}:0"
