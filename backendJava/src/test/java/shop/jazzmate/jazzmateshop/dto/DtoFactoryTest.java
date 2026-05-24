@@ -119,6 +119,16 @@ class DtoFactoryTest {
             assertThat(resp.getData()).isEqualTo(42);
         }
 
+        @Test
+        @DisplayName("ok(message) → success=true, message 세팅, data=null")
+        void ok_withoutData_setsSuccessTrueAndDataNull() {
+            var resp = shop.jazzmate.jazzmateshop.common.dto.ApiResponse.ok("성공");
+
+            assertThat(resp.isSuccess()).isTrue();
+            assertThat(resp.getMessage()).isEqualTo("성공");
+            assertThat(resp.getData()).isNull();
+        }
+
     }
 
     // ────────────────────────────────────────────────

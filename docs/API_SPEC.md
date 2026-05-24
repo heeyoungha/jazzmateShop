@@ -28,7 +28,7 @@
 ### 응답 형식
 
 ```
-생성 성공   →  ApiResponse<T>       { success: true,  message: "...", data: T }
+POST 성공  →  ApiResponse<T>       { success: true,  message: "...", data: T|null }
 조회 단건   →  DTO 직접 반환
 조회 목록   →  List<DTO> 또는 Page<DTO> 직접 반환
 FastAPI 콜백 응답  →  ResponseEntity<Void>  (body 없음)
@@ -212,8 +212,12 @@ POST /api/user-reviews/42/retry
 
 **Response `200`**
 
-```
-(body 없음)
+```json
+{
+  "success": true,
+  "message": "추천 재시도를 시작했습니다.",
+  "data": null
+}
 ```
 
 > 프론트는 retry 성공 후 `GET /api/user-reviews/{id}` polling을 재개한다.

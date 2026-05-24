@@ -18,6 +18,7 @@
 | 추천 목록 있음 → 상세 응답 DTO 중첩 변환 | review 객체 존재, hasRecommendations=true, recommendations[0] 필드 매핑 | `from_withRecommendations_hasRecommendationsTrue` |
 | 감상문 목록용 DTO 필드 매핑 | 목록 전용 8개 필드만 매핑 | `from_mapsOnly8Fields` |
 | ApiResponse 성공 팩토리 | success=true, message, data 세팅 | `ok_withData_setsSuccessTrueAndData` |
+| ApiResponse 성공 팩토리(data 없음) | success=true, message 세팅, data=null | `ok_withoutData_setsSuccessTrueAndDataNull` |
 | ErrorResponse 생성 | success=false 고정, message 세팅 | `errorResponse_successAlwaysFalse` |
 
 ### `UserReviewServiceTest`
@@ -32,6 +33,7 @@
 
 | 시나리오 | 기댓값 | 테스트 메서드 |
 |----------|--------|---------------|
+| 저장 성공 → HTTP 201, 응답에 data.id 포함 | success=true, data.id 포함 | `create_success_returns201WithDataId` |
 | trackName 누락 → HTTP 400 | success=false | `create_missingTrackName_returns400` |
 | artistName 누락 → HTTP 400 | success=false | `create_missingArtistName_returns400` |
 | reviewContent 누락 → HTTP 400 | success=false | `create_missingReviewContent_returns400` |

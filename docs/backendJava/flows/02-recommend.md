@@ -20,6 +20,7 @@
 **재시도**
 - `POST /api/user-reviews/{id}/retry` — FAILED 상태에서 사용자가 명시적으로 재시도 요청
 - `recommendationStatus = PENDING` 전이 후 `RecommendationRequestEvent` 재발행
+- 성공 응답은 `ApiResponse<Void>`로 래핑한다.
 - 존재하지 않는 id → `ResourceNotFoundException` (HTTP 404)
 - GET 조회에서는 FAILED 상태여도 retry를 자동 실행하지 않는다. retry는 이 API를 호출했을 때만 실행한다.
 
@@ -45,7 +46,9 @@
 | 존재하지 않는 id → 예외 | ResourceNotFoundException | `UserReviewServiceTest` | `getById_notFound_throwsResourceNotFoundException` |
 | retry: FAILED → PENDING 전이 + 이벤트 재발행 | status=PENDING, publishEvent 1회 | `UserReviewServiceTest` | `retry_failed_changesPendingAndPublishesEvent` |
 | retry: 존재하지 않는 id → 예외 | ResourceNotFoundException | `UserReviewServiceTest` | `retry_notFound_throwsResourceNotFoundException` |
-| 컨트롤러: 존재하지 않는 id → HTTP 404, success=false | success=false | `UserReviewControllerTest` | `getById_notFound_returns404` |
+| 컨트롤러: retry 성공 → ApiResponse 반환 | HTTP 200, success=true, data=null | `UserReviewControllerTest` | `retry_success_returnsApiResponse` |
+| 컨트롤러: retry 존재하지 않는 id → HTTP 404, success=false | success=false | `UserReviewControllerTest` | `retry_notFound_returns404` |
+| 컨트롤러: GET 존재하지 않는 id → HTTP 404, success=false | success=false | `UserReviewControllerTest` | `getById_notFound_returns404` |
 | ResourceNotFoundException → 404, success=false, message 포함 | success=false, message 포함 | `GlobalExceptionHandlerTest` | `resourceNotFound_returns404` |
 | 성공 경로 (PENDING polling → COMPLETED → recommendations 카드 렌더링) | E2E 검증 | Playwright | - |
 

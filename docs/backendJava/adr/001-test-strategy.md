@@ -28,16 +28,17 @@ Phase 6: 통합 테스트      RecommendationFlowIntegrationTest (@SpringBootTes
 | 순수 단위 | JUnit5 only | Spring 컨텍스트 불필요, 가장 빠름 |
 | Repository | `@DataJpaTest` + H2 | JPA 쿼리/매핑만 검증, 전체 컨텍스트 불필요 |
 | Service | Mockito | 비즈니스 로직, 상태 전이, 이벤트 발행 |
-| Controller `@WebMvcTest` | MockMvc | 예외 경로만 — `@Valid` → 400, 예외 → 404/500 포맷 |
-| 통합 | `@SpringBootTest` | 성공 경로 전체 플로우, AFTER_COMMIT + @Async 타이밍 |
+| Controller `@WebMvcTest` | MockMvc | HTTP 상태코드, 응답 래핑 계약, `@Valid` → 400, 예외 → 404/500 포맷 |
+| 통합 | `@SpringBootTest` | 성공 비즈니스 흐름 전체, AFTER_COMMIT + @Async 타이밍 |
 | E2E | Playwright | 프론트엔드 UI 동작, 사용자 관점 시나리오 |
 
 ### Controller 테스트 범위 결정 근거
 
-`@WebMvcTest`에서 Service를 mock하면 성공 경로 검증은 "내가 넣은 stub 값을 내가 확인하는" 구조가 된다.
-실제 비즈니스 로직은 검증되지 않으므로, **Controller 슬라이스 테스트는 예외 경로(400, 404)에만 집중**한다.
+`@WebMvcTest`에서 Service를 mock하면 성공 비즈니스 흐름 검증은 "내가 넣은 stub 값을 내가 확인하는" 구조가 된다.
+실제 비즈니스 로직은 검증되지 않으므로, **Controller 슬라이스 테스트는 HTTP 경계 계약에 집중**한다.
 
-성공 경로는 실제 클래스가 연결된 `@SpringBootTest` 통합 테스트에서 검증한다.
+성공 경로의 DB 저장, 상태 전이, 이벤트 발행 같은 비즈니스 흐름은 실제 클래스가 연결된 `@SpringBootTest` 통합 테스트에서 검증한다.
+단, 프론트가 의존하는 HTTP 상태코드와 `ApiResponse`/`ErrorResponse` 응답 래핑 계약은 `@WebMvcTest`에서 검증한다.
 
 ---
 
@@ -85,4 +86,5 @@ assertThat(result.getRecommendations()).isEmpty();
 - 테스트 실행 순서를 Phase 순서대로 유지하면 실패 원인 추적이 빠르다
 - `DtoFactoryTest`에서 검증한 팩토리는 다른 테스트에서 중복 검증 제거
 - 예외 처리 테스트는 의도적으로 중복 허용 — `GlobalExceptionHandlerTest`(포맷) + 각 Controller 테스트(QA)
-- Controller 성공 경로 테스트는 작성하지 않음 — `@SpringBootTest` 통합 테스트 또는 Playwright E2E에서 검증
+- Controller 성공 비즈니스 흐름은 `@SpringBootTest` 통합 테스트 또는 Playwright E2E에서 검증
+- HTTP 상태코드와 응답 래핑 계약은 `@WebMvcTest`에서 검증
