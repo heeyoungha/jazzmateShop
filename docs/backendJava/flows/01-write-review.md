@@ -43,6 +43,8 @@
 | 시나리오 | 기댓값 | 테스트 메서드 |
 |----------|--------|---------------|
 | @Valid 실패 → 400, success=false, message 존재 | success=false, message 포함 | `validationError_returns400` |
+| ResourceNotFoundException → 404, success=false, message 포함 | success=false, message 포함 | `resourceNotFound_returns404` |
+| RuntimeException → 500, success=false | success=false, "서버 오류가 발생했습니다." | `unexpectedException_returns500` |
 
 ### `RecommendationEventListenerTest`
 

@@ -117,30 +117,47 @@ Content-Type: application/json
 ### GET /api/user-reviews
 
 > 호출 주체: MyReviewsPage
-> 내 감상문 목록을 반환한다. (요약 응답)
+> 내 감상문 목록을 페이지네이션으로 반환한다. (요약 응답)
 
 **Request**
 
 ```
-GET /api/user-reviews
+GET /api/user-reviews?page=0&size=10
 ```
+
+| 파라미터 | 기본값 | 설명 |
+|----------|--------|------|
+| page | 0 | 페이지 번호 (0-based) |
+| size | 10 | 페이지 크기 |
 
 **Response `200`**
 
 ```json
-[
-  {
-    "id": 42,
-    "trackName": "So What",
-    "artistName": "Miles Davis",
-    "reviewContent": "처음 들었을 때의 그 고요함이 아직도 기억난다.",
-    "rating": 4.5,
-    "mood": "calm",
-    "genre": "modal jazz",
-    "createdAt": "2026-05-23T10:00:00"
-  }
-]
+{
+  "content": [
+    {
+      "id": 42,
+      "trackName": "So What",
+      "artistName": "Miles Davis",
+      "reviewContent": "처음 들었을 때의 그 고요함이 아직도 기억난다.",
+      "rating": 4.5,
+      "mood": "calm",
+      "genre": "modal jazz",
+      "createdAt": "2026-05-23T10:00:00"
+    }
+  ],
+  "totalElements": 15,
+  "totalPages": 2,
+  "number": 0,
+  "size": 10,
+  "last": false
+}
 ```
+
+> 프론트 의존 필드
+> - `content[]`: 감상문 카드 렌더링 대상
+> - `last`: `true`이면 무한 스크롤 종료
+> - `number`: 다음 요청 시 `page=number+1`
 
 ---
 
@@ -324,6 +341,7 @@ Content-Type: application/json
 
 > 호출 주체: CriticsReviewPage
 > GPT 요약이 완료된 전문가 리뷰 목록을 페이지네이션으로 반환한다.
+> Response DTO: `Page<CriticsReviewSummaryResponse>`
 
 **Request**
 
@@ -346,10 +364,7 @@ GET /api/critics?page=0&size=10
       "title": "Kind of Blue Review",
       "reviewer": "AllAboutJazz",
       "date": "2024-01-15",
-      "content": "원문 내용...",
-      "reviewSummary": "GPT 요약 내용...",
-      "url": "https://www.allaboutjazz.com/...",
-      "createdAt": "2026-05-01T09:00:00"
+      "reviewSummary": "GPT 요약 내용..."
     }
   ],
   "totalElements": 15,
@@ -361,6 +376,7 @@ GET /api/critics?page=0&size=10
 ```
 
 > 프론트 의존 필드
+> - `content[]`: `CriticsReviewSummaryResponse` 목록
 > - `last`: `true`이면 무한 스크롤 종료
 > - `number`: 다음 요청 시 `page=number+1`
 
@@ -370,6 +386,7 @@ GET /api/critics?page=0&size=10
 
 > 호출 주체: CriticsReviewPage (상세)
 > 전문가 리뷰 단건을 반환한다.
+> Response DTO: `CriticsReviewResponse`
 
 **Request**
 

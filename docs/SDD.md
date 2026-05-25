@@ -17,8 +17,7 @@
 ## 목차
 
 1. [인프라 라우팅](#1-인프라-라우팅)
-2. [API 계약 — 프론트 분기 로직 의존 필드](#2-api-계약--프론트-분기-로직-의존-필드)
-3. [추천 상태 전이](#3-추천-상태-전이)
+2. [추천 상태 전이](#2-추천-상태-전이)
 
 ---
 
@@ -39,33 +38,7 @@
 
 ---
 
-## 2. API 계약 — 프론트 분기 로직 의존 필드
-
-전체 API 명세: [API_SPEC.md](./API_SPEC.md)
-
-프론트엔드가 분기 로직에 직접 사용하는 필드:
-
-```
-POST /api/user-reviews 응답:
-  data.id  ← navigate(`/recommend/${data.id}`)에 사용, 누락 시 이동 불가
-
-GET /api/critics 응답:
-  last     ← true이면 무한 스크롤 종료
-  number   ← 다음 요청 시 page=number+1
-
-GET /api/user-reviews/{id} 응답:
-  recommendationStatus  ← PENDING/COMPLETED/FAILED 프론트 상태 표시용
-  recommendations[]     ← COMPLETED일 때 카드 렌더링 대상
-
-Polling:
-  recommendationStatus == PENDING   ← 일정 interval 후 GET /api/user-reviews/{id} 재호출
-  recommendationStatus == COMPLETED ← recommendations[] 렌더링 후 중단
-  recommendationStatus == FAILED    ← retry 버튼 노출 후 중단
-```
-
----
-
-## 3. 추천 상태 전이
+## 2. 추천 상태 전이
 
 `recommendationStatus` 필드는 프론트 UI 분기, FastAPI 콜백 처리, Spring 재시도 로직이 모두 의존한다.
 

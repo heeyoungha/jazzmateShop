@@ -14,6 +14,8 @@
   - [UserReviewCreateResponse](#userreviewcreateresponse)
   - [UserReviewResponse](#userreviewresponse)
   - [UserReviewSummaryResponse](#userreviewsummaryresponse)
+  - [CriticsReviewSummaryResponse](#criticsreviewsummaryresponse)
+  - [CriticsReviewResponse](#criticsreviewdetailresponse)
   - [ApiResponse](#apiresponse)
   - [ErrorResponse](#errorresponse)
 - [Entity](#entity)
@@ -119,7 +121,7 @@
 
 ### UserReviewSummaryResponse
 
-> 사용처: `GET /api/user-reviews` 목록 응답 (MyReviewsPage)
+> 사용처: `GET /api/user-reviews` Page 응답의 `content[]` 항목 (MyReviewsPage)
 > 팩토리: `from(UserReview)`
 
 | No | 필드 | 타입 | 설명 |
@@ -131,6 +133,39 @@
 | 5 | rating | BigDecimal | 평점 |
 | 6 | mood | String | 무드 |
 | 7 | genre | String | 장르 |
+| 8 | createdAt | LocalDateTime | 생성일시 |
+
+---
+
+### CriticsReviewSummaryResponse
+
+> 사용처: `GET /api/critics` Page 응답의 `content[]` 항목 (CriticsReviewPage)
+> 팩토리: `from(CriticsReview)`
+
+| No | 필드 | 타입 | 설명 |
+|----|------|------|------|
+| 1 | id | UUID | 리뷰 ID |
+| 2 | title | String | 리뷰 제목 |
+| 3 | reviewer | String | 리뷰어 |
+| 4 | date | String | 게재일 |
+| 5 | reviewSummary | String | GPT 요약 내용 |
+
+---
+
+### CriticsReviewResponse
+
+> 사용처: `GET /api/critics/{id}` 응답 (CriticsReviewDetailPage)
+> 팩토리: `from(CriticsReview)`
+
+| No | 필드 | 타입 | 설명 |
+|----|------|------|------|
+| 1 | id | UUID | 리뷰 ID |
+| 2 | title | String | 리뷰 제목 |
+| 3 | reviewer | String | 리뷰어 |
+| 4 | date | String | 게재일 |
+| 5 | content | String | 원문 |
+| 6 | reviewSummary | String | GPT 요약 내용 |
+| 7 | url | String | 원문 URL |
 | 8 | createdAt | LocalDateTime | 생성일시 |
 
 ---

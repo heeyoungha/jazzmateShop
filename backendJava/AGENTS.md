@@ -9,10 +9,10 @@
 
 | 문서 | 내용 | 언제 확인할지 |
 |------|------|---------------|
-| [SDD.md](../docs/backendJava/design/SDD.md) | 레이어 책임 경계, 플로우 문서 인덱스, 공통 설계 원칙 | 기능 구현 전, 공통 설계 변경 시 |
-| [flows/](../docs/backendJava/design/flows/) | 프론트 페이지별 사용자 플로우, 테스트 시나리오, 관련 구성요소 | 플로우 구현 전, 플로우 설계 변경 시 |
-| [API_SPEC.md](../docs/backendJava/design/API_SPEC.md) | 전체 엔드포인트 요청/응답 명세 | API 추가/변경 시 |
-| [DB_SPEC.md](../docs/backendJava/design/DB_SPEC.md) | DB 테이블·Entity·DTO·Enum 필드 명세 | DB/Entity/DTO 추가·수정 시 |
+| [SDD.md](../docs/backendJava/SDD.md) | 레이어 책임 경계, 플로우 문서 인덱스, 공통 설계 원칙 | 기능 구현 전, 공통 설계 변경 시 |
+| [flows/](../docs/backendJava/flows/) | 프론트 페이지별 사용자 플로우, 테스트 시나리오, 관련 구성요소 | 플로우 구현 전, 플로우 설계 변경 시 |
+| [API_SPEC.md](../docs/API_SPEC.md) | 전체 엔드포인트 요청/응답 명세 | API 추가/변경 시 |
+| [DB_SPEC.md](../docs/backendJava/DB_SPEC.md) | DB 테이블·Entity·DTO·Enum 필드 명세 | DB/Entity/DTO 추가·수정 시 |
 
 ---
 
@@ -22,9 +22,9 @@
 
 | ADR | 주제 | 언제 확인할지 |
 |---|---|---|
-| [ADR-B001](../docs/backendJava/adr/001-test-strategy.md) | 테스트 전략 | 테스트 레이어 분리, 도구 선택, 검증 방식 변경 시 |
-| [ADR-B002](../docs/backendJava/adr/002-backend-design.md) | 백엔드 설계 결정 | DTO 패턴, recommendationStatus 전이 정책 변경 시 |
-| [ADR-B003](../docs/backendJava/adr/003-realtime-notification-strategy.md) | AI 추천 상태 확인 방식 | polling, SSE, WebSocket, WebFlux, 브로커 기반 상태 확인/알림 구조 변경 시 |
+| [ADR-BJ001](../docs/backendJava/adr/001-test-strategy.md) | 테스트 전략 | 테스트 레이어 분리, 도구 선택, 검증 방식 변경 시 |
+| [ADR-BJ002](../docs/backendJava/adr/002-backend-design.md) | 백엔드 설계 결정 | DTO 패턴, recommendationStatus 전이 정책 변경 시 |
+| [ADR-BJ003](../docs/backendJava/adr/003-realtime-notification-strategy.md) | AI 추천 상태 확인 방식 | polling, SSE, WebSocket, WebFlux, 브로커 기반 상태 확인/알림 구조 변경 시 |
 | [Polling → SSE 전환 노트](../docs/backendJava/migration-notes/polling-to-sse.md) | 전환 가이드 | polling에서 SSE로 구조 변경 시 |
 
 ---

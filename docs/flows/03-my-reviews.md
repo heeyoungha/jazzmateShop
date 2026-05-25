@@ -10,10 +10,10 @@
      │────────────────────────────►│
      │                             │  isPublic=true 필터
      │                             │  createdAt DESC 정렬
-     │  List<UserReviewSummary>    │
+     │  Page<UserReviewSummary>    │
      │◄────────────────────────────│
      │  카드 렌더링                   │
-     │  스크롤 시 page+1 요청         │
+     │  last=false면 page+1 요청     │
 ```
 
 ## 모듈별 역할
@@ -27,6 +27,9 @@
 
 - `isPublic=true`인 감상문만 반환
 - 정렬: `createdAt` DESC
+- `content[]`: 감상문 카드 렌더링 대상
+- `last`: `true`이면 무한 스크롤 종료
+- `number`: 다음 요청 시 `page=number+1`
 
 ## 관련 API
 

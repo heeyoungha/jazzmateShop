@@ -42,14 +42,13 @@
 |----------|--------|---------------|---------------|
 | COMPLETED → recommendations 비어있지 않음, hasRecommendations=true | isHasRecommendations=true, recommendations 비어있지 않음, publishEvent 0회 | `UserReviewServiceTest` | `getById_completed_returnsRecommendations` |
 | PENDING → recommendations 빈 리스트, 이벤트 미발행 | status=PENDING, recommendations=[], publishEvent 0회 | `UserReviewServiceTest` | `getById_pending_noEventPublished` |
-| FAILED → recommendations 빈 리스트, 이벤트 미발행 | status=FAILED, recommendations=[], publishEvent 0회 | `UserReviewServiceTest` | `getById_failed_noEventPublished` |
+| FAILED → recommendations 빈 리스트, retry 자동 실행 없음 | status=FAILED, recommendations=[], publishEvent 0회 | `UserReviewServiceTest` | `getById_failed_noEventPublished` |
 | 존재하지 않는 id → 예외 | ResourceNotFoundException | `UserReviewServiceTest` | `getById_notFound_throwsResourceNotFoundException` |
 | retry: FAILED → PENDING 전이 + 이벤트 재발행 | status=PENDING, publishEvent 1회 | `UserReviewServiceTest` | `retry_failed_changesPendingAndPublishesEvent` |
 | retry: 존재하지 않는 id → 예외 | ResourceNotFoundException | `UserReviewServiceTest` | `retry_notFound_throwsResourceNotFoundException` |
 | 컨트롤러: retry 성공 → ApiResponse 반환 | HTTP 200, success=true, data=null | `UserReviewControllerTest` | `retry_success_returnsApiResponse` |
 | 컨트롤러: retry 존재하지 않는 id → HTTP 404, success=false | success=false | `UserReviewControllerTest` | `retry_notFound_returns404` |
 | 컨트롤러: GET 존재하지 않는 id → HTTP 404, success=false | success=false | `UserReviewControllerTest` | `getById_notFound_returns404` |
-| ResourceNotFoundException → 404, success=false, message 포함 | success=false, message 포함 | `GlobalExceptionHandlerTest` | `resourceNotFound_returns404` |
 | 성공 경로 (PENDING polling → COMPLETED → recommendations 카드 렌더링) | E2E 검증 | Playwright | - |
 
 ## 구현 흐름
