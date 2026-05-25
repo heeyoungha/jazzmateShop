@@ -2,6 +2,7 @@ package shop.jazzmate.jazzmateshop.userReview;
 
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 import shop.jazzmate.jazzmateshop.common.constant.ApiMessages;
@@ -10,8 +11,6 @@ import shop.jazzmate.jazzmateshop.userReview.dto.UserReviewCreateResponse;
 import shop.jazzmate.jazzmateshop.userReview.dto.UserReviewRequest;
 import shop.jazzmate.jazzmateshop.userReview.dto.UserReviewResponse;
 import shop.jazzmate.jazzmateshop.userReview.dto.UserReviewSummaryResponse;
-
-import java.util.List;
 
 @RestController
 @RequestMapping("/api/user-reviews")
@@ -33,7 +32,7 @@ public class UserReviewController {
     }
 
     @GetMapping
-    public List<UserReviewSummaryResponse> getPublicUserReviews(
+    public Page<UserReviewSummaryResponse> getPublicUserReviews(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size) {
         return userReviewService.getPublicUserReviews(page, size);

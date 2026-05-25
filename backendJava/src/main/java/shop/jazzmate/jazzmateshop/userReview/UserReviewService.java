@@ -2,6 +2,7 @@ package shop.jazzmate.jazzmateshop.userReview;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
@@ -50,11 +51,10 @@ public class UserReviewService {
     }
 
     @Transactional(readOnly = true)
-    public List<UserReviewSummaryResponse> getPublicUserReviews(int page, int size) {
+    public Page<UserReviewSummaryResponse> getPublicUserReviews(int page, int size) {
         return userReviewRepository
                 .findByIsPublicTrueOrderByCreatedAtDesc(PageRequest.of(page, size))
-                .map(UserReviewSummaryResponse::from)
-                .toList();
+                .map(UserReviewSummaryResponse::from);
     }
 
     @Transactional
