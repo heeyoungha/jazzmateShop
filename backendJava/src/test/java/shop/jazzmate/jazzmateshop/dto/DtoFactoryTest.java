@@ -3,6 +3,9 @@ package shop.jazzmate.jazzmateshop.dto;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import shop.jazzmate.jazzmateshop.criticsReview.dto.CriticsReviewResponse;
+import shop.jazzmate.jazzmateshop.criticsReview.dto.CriticsReviewSummaryResponse;
+import shop.jazzmate.jazzmateshop.criticsReview.entity.CriticsReview;
 import shop.jazzmate.jazzmateshop.recommendation.entity.RecommendAlbum;
 import shop.jazzmate.jazzmateshop.userReview.dto.UserReviewResponse;
 import shop.jazzmate.jazzmateshop.userReview.dto.UserReviewSummaryResponse;
@@ -10,6 +13,7 @@ import shop.jazzmate.jazzmateshop.userReview.entity.UserReview;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -129,6 +133,55 @@ class DtoFactoryTest {
             assertThat(resp.getData()).isNull();
         }
 
+    }
+
+    private final CriticsReview CRITICS = CriticsReview.builder()
+            .id(UUID.fromString("00000000-0000-0000-0000-000000000001"))
+            .title("Kind of Blue")
+            .reviewer("AllAboutJazz")
+            .reviewSummary("GPT 요약 내용")
+            .reviewContent("원문 내용")
+            .reviewUrl("https://example.com")
+            .build();
+
+    // ────────────────────────────────────────────────
+    // CriticsReviewSummaryResponse.from(entity)
+    // ────────────────────────────────────────────────
+    @Nested
+    @DisplayName("CriticsReviewSummaryResponse.from(entity) — 목록 전용")
+    class CriticsReviewSummaryResponseFactory {
+
+        @Test
+        @DisplayName("목록 전용 필드만 매핑 (id, title, reviewer, reviewSummary)")
+        void from_mapsOnlySummaryFields() {
+            CriticsReviewSummaryResponse summary = CriticsReviewSummaryResponse.from(CRITICS);
+
+            assertThat(summary.getId()).isEqualTo(CRITICS.getId());
+            assertThat(summary.getTitle()).isEqualTo("Kind of Blue");
+            assertThat(summary.getReviewer()).isEqualTo("AllAboutJazz");
+            assertThat(summary.getReviewSummary()).isEqualTo("GPT 요약 내용");
+        }
+    }
+
+    // ────────────────────────────────────────────────
+    // CriticsReviewResponse.from(entity)
+    // ────────────────────────────────────────────────
+    @Nested
+    @DisplayName("CriticsReviewResponse.from(entity) — 상세 응답용")
+    class CriticsReviewResponseFactory {
+
+        @Test
+        @DisplayName("상세 필드 전체 매핑 (id, title, reviewer, reviewContent, reviewSummary, reviewUrl, createdAt)")
+        void from_mapsOnlyDetailFields() {
+            CriticsReviewResponse detail = CriticsReviewResponse.from(CRITICS);
+
+            assertThat(detail.getId()).isEqualTo(CRITICS.getId());
+            assertThat(detail.getTitle()).isEqualTo("Kind of Blue");
+            assertThat(detail.getReviewer()).isEqualTo("AllAboutJazz");
+            assertThat(detail.getReviewContent()).isEqualTo("원문 내용");
+            assertThat(detail.getReviewSummary()).isEqualTo("GPT 요약 내용");
+            assertThat(detail.getReviewUrl()).isEqualTo("https://example.com");
+        }
     }
 
     // ────────────────────────────────────────────────

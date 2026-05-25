@@ -15,6 +15,7 @@ import org.springframework.data.domain.Pageable;
 import shop.jazzmate.jazzmateshop.common.exception.ResourceNotFoundException;
 import shop.jazzmate.jazzmateshop.recommendation.RecommendAlbumRepository;
 import shop.jazzmate.jazzmateshop.recommendation.event.RecommendationRequestEvent;
+import org.springframework.data.domain.Page;
 import shop.jazzmate.jazzmateshop.userReview.dto.UserReviewCreateResponse;
 import shop.jazzmate.jazzmateshop.userReview.dto.UserReviewRequest;
 import shop.jazzmate.jazzmateshop.userReview.dto.UserReviewResponse;
@@ -147,12 +148,12 @@ class UserReviewServiceTest {
                     .willReturn(new PageImpl<>(List.of(DEFAULT_SAVED)));
 
             // when: 목록 조회
-            List<UserReviewSummaryResponse> result = userReviewService.getPublicUserReviews(0, 20);
+            Page<UserReviewSummaryResponse> result = userReviewService.getPublicUserReviews(0, 20);
 
             // then: UserReviewSummaryResponse로 변환되었는지 검증
-            assertThat(result).hasSize(1);
-            assertThat(result.get(0).getId()).isEqualTo(DEFAULT_SAVED.getId());
-            assertThat(result.get(0).getTrackName()).isEqualTo(DEFAULT_SAVED.getTrackName());
+            assertThat(result.getContent()).hasSize(1);
+            assertThat(result.getContent().get(0).getId()).isEqualTo(DEFAULT_SAVED.getId());
+            assertThat(result.getContent().get(0).getTrackName()).isEqualTo(DEFAULT_SAVED.getTrackName());
         }
     }
 

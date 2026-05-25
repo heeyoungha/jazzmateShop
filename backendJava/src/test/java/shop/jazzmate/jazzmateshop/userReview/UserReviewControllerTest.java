@@ -19,6 +19,7 @@ import shop.jazzmate.jazzmateshop.userReview.entity.UserReview;
 import java.util.Map;
 
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.doThrow;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -42,6 +43,8 @@ class UserReviewControllerTest {
     @MockBean
     UserReviewService userReviewService;
 
+    private static final int DEFAULT_ID = 1;
+
     // ────────────────────────────────────────────────
     // POST /api/user-reviews
     // ────────────────────────────────────────────────
@@ -52,7 +55,7 @@ class UserReviewControllerTest {
         @Test
         @DisplayName("저장 성공 → HTTP 201, success=true, data.id 포함")
         void create_success_returns201WithDataId() throws Exception {
-            UserReviewCreateResponse response = UserReviewCreateResponse.from(UserReview.builder().id(42).build());
+            UserReviewCreateResponse response = UserReviewCreateResponse.from(UserReview.builder().id(DEFAULT_ID).build());
             given(userReviewService.createUserReview(org.mockito.ArgumentMatchers.any(UserReviewRequest.class)))
                     .willReturn(response);
 
@@ -66,7 +69,7 @@ class UserReviewControllerTest {
                     .andExpect(status().isCreated())
                     .andExpect(jsonPath("$.success").value(true))
                     .andExpect(jsonPath("$.message").value("감상문이 저장되었습니다."))
-                    .andExpect(jsonPath("$.data.id").value(42));
+                    .andExpect(jsonPath("$.data.id").value(DEFAULT_ID));
         }
 
         @Test
@@ -120,10 +123,10 @@ class UserReviewControllerTest {
         @Test
         @DisplayName("존재하지 않는 id → HTTP 404, success=false")
         void getById_notFound_returns404() throws Exception {
-            given(userReviewService.getUserReview(999))
-                    .willThrow(new ResourceNotFoundException("UserReview not found: 999"));
+            given(userReviewService.getUserReview(DEFAULT_ID))
+                    .willThrow(new ResourceNotFoundException("UserReview not found: " + DEFAULT_ID));
 
-            mockMvc.perform(get("/api/user-reviews/999"))
+            mockMvc.perform(get("/api/user-reviews/" + DEFAULT_ID))
                     .andExpect(status().isNotFound())
                     .andExpect(jsonPath("$.success").value(false));
         }
@@ -149,10 +152,10 @@ class UserReviewControllerTest {
         @Test
         @DisplayName("존재하지 않는 id → HTTP 404, success=false")
         void retry_notFound_returns404() throws Exception {
-            org.mockito.Mockito.doThrow(new ResourceNotFoundException("UserReview not found: 999"))
-                    .when(userReviewService).retryRecommendation(999);
+            doThrow(new ResourceNotFoundException("UserReview not found: " + DEFAULT_ID))
+                    .when(userReviewService).retryRecommendation(DEFAULT_ID);
 
-            mockMvc.perform(post("/api/user-reviews/999/retry"))
+            mockMvc.perform(post("/api/user-reviews/" + DEFAULT_ID + "/retry"))
                     .andExpect(status().isNotFound())
                     .andExpect(jsonPath("$.success").value(false));
         }
