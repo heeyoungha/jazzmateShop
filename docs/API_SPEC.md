@@ -35,6 +35,16 @@ FastAPI 콜백 응답  →  ResponseEntity<Void>  (body 없음)
 에러       →  ErrorResponse         { success: false, message: "..." }
 ```
 
+### 공통 응답 메시지
+
+> 코드 상수: `ApiMessages`
+
+| 상황 | message |
+|------|---------|
+| 감상문 생성 성공 | 감상문이 저장되었습니다. |
+| 추천 재시도 시작 | 추천 재시도를 시작했습니다. |
+| 서버 오류 | 서버 오류가 발생했습니다. |
+
 ### 에러 코드
 
 | HTTP | 발생 조건 | 응답 |

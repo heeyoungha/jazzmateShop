@@ -137,13 +137,13 @@
 
 ### ApiResponse
 
-> 사용처: 생성 성공 응답 래퍼
+> 사용처: POST 성공 응답 래퍼. 조회 API는 DTO/List를 직접 반환하고, FastAPI 내부 콜백은 body 없음.
 
 | No | 필드 | 타입 | 설명 |
 |----|------|------|------|
 | 1 | success | boolean | 항상 true |
 | 2 | message | String | 응답 메시지 |
-| 3 | data | T | 응답 데이터 |
+| 3 | data | T | 응답 데이터. 데이터가 없는 POST 성공 응답은 null |
 
 ---
 
@@ -247,4 +247,3 @@
 |----|------|------|------|
 | 1 | reviewId | Integer | 감상문 ID |
 | 2 | reviewContent | String | 감상문 본문 — FastAPI 추천 요청 payload로 사용 |
-
