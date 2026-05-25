@@ -7,9 +7,6 @@
 
 ## 설계 문서
 
-> 구현 전 반드시 아래 문서를 먼저 읽는다.
-> 문서 목적 및 사용 규칙: [docs/backendJava/README.md](../docs/backendJava/README.md)
-
 | 문서 | 내용 | 언제 확인할지 |
 |------|------|---------------|
 | [SDD.md](../docs/backendJava/design/SDD.md) | 레이어 책임 경계, 플로우 문서 인덱스, 공통 설계 원칙 | 기능 구현 전, 공통 설계 변경 시 |
