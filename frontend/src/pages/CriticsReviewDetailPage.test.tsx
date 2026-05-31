@@ -53,4 +53,31 @@ describe("CriticsReviewDetailPage", () => {
       await screen.findByText("찾을 수 없는 페이지입니다."),
     ).toBeInTheDocument();
   });
+
+  it("상세 조회 중 서버 오류가 발생하면 일반 에러 메시지가 표시된다", async () => {
+    server.use(
+      http.get("/api/critics/:id", () =>
+        HttpResponse.json(
+          { success: false, message: "서버 오류가 발생했습니다." },
+          { status: 500 },
+        ),
+      ),
+    );
+
+    renderCriticsReviewDetailPage();
+
+    expect(
+      await screen.findByText("전문가 리뷰를 불러오지 못했습니다."),
+    ).toBeInTheDocument();
+  });
+
+  it("상세 조회 중 네트워크 오류가 발생하면 일반 에러 메시지가 표시된다", async () => {
+    server.use(http.get("/api/critics/:id", () => HttpResponse.error()));
+
+    renderCriticsReviewDetailPage();
+
+    expect(
+      await screen.findByText("전문가 리뷰를 불러오지 못했습니다."),
+    ).toBeInTheDocument();
+  });
 });

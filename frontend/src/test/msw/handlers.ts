@@ -26,6 +26,22 @@ export const requestLog = {
   },
 };
 
+// 감상문 목록을 첫 페이지부터 마지막 페이지로 강제하는 테스트용 핸들러.
+export const lastUserReviewsPageHandler = http.get("/api/user-reviews", ({ request }) => {
+  const searchParams = new URL(request.url).searchParams;
+  const page = Number(searchParams.get("page") ?? 0);
+  const size = Number(searchParams.get("size") ?? 0);
+  requestLog.userReviewPages.push(page);
+  return HttpResponse.json(userReviewPage({ number: page, last: true }));
+});
+
+// 전문가 리뷰 목록을 첫 페이지부터 마지막 페이지로 강제하는 테스트용 핸들러.
+export const lastCriticsPageHandler = http.get("/api/critics", ({ request }) => {
+  const page = Number(new URL(request.url).searchParams.get("page") ?? 0);
+  requestLog.criticsPages.push(page);
+  return HttpResponse.json(criticsPage({ number: page, last: true }));
+});
+
 export const defaultHandlers = [
   http.post("/api/user-reviews", async () => {
     requestLog.createReview += 1;
@@ -53,12 +69,16 @@ export const defaultHandlers = [
     });
   }),
 
+  // 기본 감상문 목록 핸들러: page 쿼리를 기록하고 page 1부터 마지막 페이지로 응답한다.
   http.get("/api/user-reviews", ({ request }) => {
-    const page = Number(new URL(request.url).searchParams.get("page") ?? 0);
+    const searchParams = new URL(request.url).searchParams;
+    const page = Number(searchParams.get("page") ?? 0);
+    const size = Number(searchParams.get("size") ?? 0);
     requestLog.userReviewPages.push(page);
     return HttpResponse.json(userReviewPage({ number: page, last: page >= 1 }));
   }),
 
+  // 기본 전문가 리뷰 목록 핸들러: page 쿼리를 기록하고 page 1부터 마지막 페이지로 응답한다.
   http.get("/api/critics", ({ request }) => {
     const page = Number(new URL(request.url).searchParams.get("page") ?? 0);
     requestLog.criticsPages.push(page);
@@ -92,6 +112,16 @@ export const failedHandler = http.get("/api/user-reviews/:id", () => {
   requestLog.reviewDetail += 1;
   return HttpResponse.json(failedReviewDetail);
 });
+
+export const failedThenPendingAfterRetryHandler = http.get(
+  "/api/user-reviews/:id",
+  () => {
+    requestLog.reviewDetail += 1;
+    return HttpResponse.json(
+      requestLog.retry === 0 ? failedReviewDetail : pendingReviewDetail,
+    );
+  },
+);
 
 export const delayedCreateReviewHandler = http.post(
   "/api/user-reviews",

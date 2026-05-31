@@ -93,4 +93,17 @@ describe("WriteReviewPage", () => {
       expect(screen.getByText("서버 오류가 발생했습니다.")).toBeInTheDocument();
     });
   });
+
+  it("네트워크 오류 시 일반 에러 메시지가 표시된다", async () => {
+    server.use(http.post("/api/user-reviews", () => HttpResponse.error()));
+    const user = userEvent.setup();
+    renderWriteReviewPage();
+
+    await fillRequiredFields(user);
+    await user.click(screen.getByRole("button", { name: "저장" }));
+
+    expect(
+      await screen.findByText("감상문 저장 중 오류가 발생했습니다."),
+    ).toBeInTheDocument();
+  });
 });

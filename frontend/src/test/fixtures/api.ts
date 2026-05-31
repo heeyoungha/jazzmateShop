@@ -1,5 +1,5 @@
 export const REVIEW_ID = 42;
-export const CRITICS_ID = 100;
+export const CRITICS_ID = "uuid-1234";
 
 export const review = {
   id: REVIEW_ID,
@@ -78,7 +78,7 @@ export function criticsPage({ number = 0, last = false } = {}) {
   return {
     content: [
       {
-        id: CRITICS_ID + number,
+        id: `${CRITICS_ID}-${number}`,
         title: number === 0 ? "Kind of Blue Review" : "Blue Train Review",
         reviewer: "All About Jazz",
         date: "2026-05-23",

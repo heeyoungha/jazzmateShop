@@ -38,6 +38,22 @@ describe("ReviewForm", () => {
     expect(screen.getByText("감상문은 필수입니다.")).toBeInTheDocument();
   });
 
+  it("공백만 입력한 필수 필드는 유효성 에러가 표시된다", async () => {
+    const onSubmit = vi.fn();
+    const user = userEvent.setup();
+    render(<ReviewForm onSubmit={onSubmit} />);
+
+    await user.type(screen.getByLabelText("곡명"), "   ");
+    await user.type(screen.getByLabelText("아티스트"), "   ");
+    await user.type(screen.getByLabelText("감상문"), "   ");
+    await user.click(screen.getByRole("button", { name: "저장" }));
+
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(screen.getByText("곡명은 필수입니다.")).toBeInTheDocument();
+    expect(screen.getByText("아티스트는 필수입니다.")).toBeInTheDocument();
+    expect(screen.getByText("감상문은 필수입니다.")).toBeInTheDocument();
+  });
+
   it("선택 필드 없이도 제출이 가능하다", async () => {
     const onSubmit = vi.fn();
     const user = userEvent.setup();
