@@ -25,35 +25,35 @@
 | 구성요소 | 역할 |
 |----------|------|
 | `ReviewBasedRecommendPage` | 페이지 루트, polling timer 관리, 상태 분기 |
-| `RecommendationCard` | 추천 앨범 카드 렌더링 (albumId, score, reason) |
+| `RecommendationCard` | 추천 앨범 카드 렌더링 (albumId, reason, url) |
 | `RetryButton` | FAILED 상태일 때 노출, retry 요청 처리 |
 
 ## 테스트 시나리오
 
-### Unit (Vitest)
+### Unit — [`polling.test.ts`](../../../frontend/src/config/polling.test.ts)
 
-| 시나리오 | 기댓값 | 테스트 대상 | 테스트 케이스 |
-|----------|--------|-------------|---------------|
-| polling interval 계산 | elapsed 시간에 맞는 interval 반환 | `src/config/polling.ts` | `getRecommendationPollingInterval_returnsConfiguredInterval` |
+| 시나리오 |
+|----------|
+| polling interval 계산 |
 
-### Component (React Testing Library + Vitest)
+### Component
 
-| 시나리오 | 기댓값 | 테스트 대상 | 테스트 케이스 |
-|----------|--------|-------------|---------------|
-| 추천 카드 렌더링 | albumId, score, reason 표시 | `RecommendationCard` | `rendersRecommendationFields` |
-| retry 버튼 렌더링 | 클릭 시 onRetry callback 호출 | `RetryButton` | `click_callsOnRetry` |
+| 시나리오 | 테스트 파일 |
+|----------|-------------|
+| 추천 카드 렌더링 | [`RecommendationCard.test.tsx`](../../../frontend/src/components/RecommendationCard.test.tsx) |
+| retry 버튼 렌더링 | [`RetryButton.test.tsx`](../../../frontend/src/components/RetryButton.test.tsx) |
 
-### Page (React Testing Library + Vitest + MSW + fake timer)
+### Page — [`ReviewBasedRecommendPage.test.tsx`](../../../frontend/src/pages/ReviewBasedRecommendPage.test.tsx)
 
-| 시나리오 | 기댓값 | 테스트 대상 | 테스트 케이스 |
-|----------|--------|-------------|---------------|
-| 페이지 진입 | `GET /api/user-reviews/{id}` 1회 호출 | `ReviewBasedRecommendPage` | `mount_fetchesReviewDetail` |
-| PENDING 응답 | 대기 UI 표시, polling 유지 | `ReviewBasedRecommendPage` | `pending_showsWaitingStateAndContinuesPolling` |
-| COMPLETED 응답 | 추천 카드 렌더링, polling 중단 | `ReviewBasedRecommendPage` | `completed_rendersRecommendationsAndStopsPolling` |
-| FAILED 응답 | 에러 메시지와 retry 버튼 표시, polling 중단 | `ReviewBasedRecommendPage` | `failed_showsRetryAndStopsPolling` |
-| FAILED 응답만 수신 | retry API 자동 호출 없음 | `ReviewBasedRecommendPage` | `failed_doesNotAutoRetry` |
-| retry 버튼 클릭 | `POST /api/user-reviews/{id}/retry` 호출 후 PENDING UI 복귀 | `ReviewBasedRecommendPage` | `retryClick_postsRetryAndRestartsPolling` |
-| 페이지 이탈 | polling timer cleanup | `ReviewBasedRecommendPage` | `unmount_clearsPollingTimer` |
+| 시나리오 |
+|----------|
+| 페이지 진입 |
+| PENDING 응답 |
+| COMPLETED 응답 |
+| FAILED 응답 |
+| FAILED 응답만 수신 |
+| retry 버튼 클릭 |
+| 페이지 이탈 |
 
 ### E2E (Playwright)
 

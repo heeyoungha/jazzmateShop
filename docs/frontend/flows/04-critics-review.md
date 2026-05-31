@@ -20,33 +20,33 @@
 
 ## 테스트 시나리오
 
-### Unit (Vitest)
+### Unit — [`pagination.test.ts`](../../../frontend/src/lib/pagination.test.ts)
 
-| 시나리오 | 기댓값 | 테스트 대상 | 테스트 케이스 |
-|----------|--------|-------------|---------------|
-| 다음 page 계산 | `last == false`이면 `number+1` 반환 | pagination helper | `getNextCriticsPage_whenNotLast_returnsNextPage` |
-| 다음 page 계산 종료 | `last == true`이면 다음 page 없음 | pagination helper | `getNextCriticsPage_whenLast_returnsNull` |
+| 시나리오 |
+|----------|
+| 마지막 페이지가 아니면 다음 페이지 번호를 반환한다 |
+| 마지막 페이지이면 null을 반환한다 |
 
-### Component (React Testing Library + Vitest)
+### Component
 
-| 시나리오 | 기댓값 | 테스트 대상 | 테스트 케이스 |
-|----------|--------|-------------|---------------|
-| 카드 렌더링 | title, reviewer, date, reviewSummary 요약 표시 | `CriticsReviewCard` | `rendersCardSummaryFields` |
-| 카드 클릭 | onClick callback 호출 | `CriticsReviewCard` | `click_callsOnClick` |
-| 상세 렌더링 | content, reviewSummary 전체, url 표시 | `CriticsReviewDetail` | `rendersDetailFields` |
+| 시나리오 | 테스트 파일 |
+|----------|-------------|
+| 카드 렌더링 | [`CriticsReviewCard.test.tsx`](../../../frontend/src/components/CriticsReviewCard.test.tsx) |
+| 카드 클릭 | [`CriticsReviewCard.test.tsx`](../../../frontend/src/components/CriticsReviewCard.test.tsx) |
+| 상세 렌더링 | [`CriticsReviewDetail.test.tsx`](../../../frontend/src/components/CriticsReviewDetail.test.tsx) |
 
-### Page (React Testing Library + Vitest + MSW + fake timer)
+### Page
 
-| 시나리오 | 기댓값 | 테스트 대상 | 테스트 케이스 |
-|----------|--------|-------------|---------------|
-| 페이지 진입 | `GET /api/critics?page=0&size=10` 호출 | `CriticsReviewPage` | `mount_fetchesFirstPage` |
-| 목록 응답 수신 | `CriticsReviewCard` 목록 렌더링 | `CriticsReviewPage` | `listResponse_rendersCriticsCards` |
-| `last == false` 상태에서 스크롤 하단 도달 | `page=number+1` 추가 요청 | `CriticsReviewPage` | `scrollBottom_whenNotLast_fetchesNextPage` |
-| `last == true` 상태에서 스크롤 하단 도달 | 추가 요청 없음 | `CriticsReviewPage` | `scrollBottom_whenLast_doesNotFetch` |
-| 카드 클릭 | `/critics/{id}`로 이동 | `CriticsReviewPage` | `cardClick_navigatesToDetailPage` |
-| 페이지 진입 | `GET /api/critics/{id}` 호출 | `CriticsReviewDetailPage` | `mount_fetchesCriticsDetail` |
-| 상세 응답 수신 | 상세 뷰 렌더링 | `CriticsReviewDetailPage` | `detailResponse_showsDetailView` |
-| 상세 404 응답 | 에러 메시지 표시 | `CriticsReviewDetailPage` | `detailNotFound_showsErrorMessage` |
+| 시나리오 | 테스트 파일 |
+|----------|-------------|
+| 페이지 진입 (목록) | [`CriticsReviewPage.test.tsx`](../../../frontend/src/pages/CriticsReviewPage.test.tsx) |
+| 목록 응답 수신 | [`CriticsReviewPage.test.tsx`](../../../frontend/src/pages/CriticsReviewPage.test.tsx) |
+| `last == false` 상태에서 스크롤 하단 도달 | [`CriticsReviewPage.test.tsx`](../../../frontend/src/pages/CriticsReviewPage.test.tsx) |
+| `last == true` 상태에서 스크롤 하단 도달 | [`CriticsReviewPage.test.tsx`](../../../frontend/src/pages/CriticsReviewPage.test.tsx) |
+| 카드 클릭 | [`CriticsReviewPage.test.tsx`](../../../frontend/src/pages/CriticsReviewPage.test.tsx) |
+| 페이지 진입 (상세) | [`CriticsReviewDetailPage.test.tsx`](../../../frontend/src/pages/CriticsReviewDetailPage.test.tsx) |
+| 상세 응답 수신 | [`CriticsReviewDetailPage.test.tsx`](../../../frontend/src/pages/CriticsReviewDetailPage.test.tsx) |
+| 상세 404 응답 | [`CriticsReviewDetailPage.test.tsx`](../../../frontend/src/pages/CriticsReviewDetailPage.test.tsx) |
 
 ### E2E (Playwright)
 

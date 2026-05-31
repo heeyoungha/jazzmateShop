@@ -17,31 +17,31 @@
 
 ## 테스트 시나리오
 
-### Unit (Vitest)
+### Unit — [`pagination.test.ts`](../../../frontend/src/lib/pagination.test.ts)
 
-| 시나리오 | 기댓값 | 테스트 대상 | 테스트 케이스 |
-|----------|--------|-------------|---------------|
-| 다음 page 계산 | `last == false`이면 `number+1` 반환 | pagination helper | `getNextReviewPage_whenNotLast_returnsNextPage` |
-| 다음 page 계산 종료 | `last == true`이면 다음 page 없음 | pagination helper | `getNextReviewPage_whenLast_returnsNull` |
+| 시나리오 |
+|----------|
+| 마지막 페이지가 아니면 다음 페이지 번호를 반환한다 |
+| 마지막 페이지이면 null을 반환한다 |
 
-### Component (React Testing Library + Vitest)
+### Component — [`ReviewCard.test.tsx`](../../../frontend/src/components/ReviewCard.test.tsx)
 
-| 시나리오 | 기댓값 | 테스트 대상 | 테스트 케이스 |
-|----------|--------|-------------|---------------|
-| 카드 렌더링 | trackName, artistName, rating, createdAt 표시 | `ReviewCard` | `rendersSummaryFields` |
-| 카드 클릭 | onClick callback 호출 | `ReviewCard` | `click_callsOnClick` |
+| 시나리오 |
+|----------|
+| 카드 렌더링 |
+| 카드 클릭 |
 
-### Page (React Testing Library + Vitest + MSW + fake timer)
+### Page — [`MyReviewsPage.test.tsx`](../../../frontend/src/pages/MyReviewsPage.test.tsx)
 
-| 시나리오 | 기댓값 | 테스트 대상 | 테스트 케이스 |
-|----------|--------|-------------|---------------|
-| 페이지 진입 | `GET /api/user-reviews?page=0&size=10` 호출 | `MyReviewsPage` | `mount_fetchesFirstPage` |
-| 목록 응답 수신 | `ReviewCard` 목록 렌더링 | `MyReviewsPage` | `listResponse_rendersReviewCards` |
-| 빈 목록 응답 | 빈 상태 메시지 표시 | `MyReviewsPage` | `emptyList_showsEmptyState` |
-| `last == false` 상태에서 스크롤 하단 도달 | `page=number+1` 추가 요청 | `MyReviewsPage` | `scrollBottom_whenNotLast_fetchesNextPage` |
-| `last == true` 상태에서 스크롤 하단 도달 | 추가 요청 없음 | `MyReviewsPage` | `scrollBottom_whenLast_doesNotFetch` |
-| 추가 응답 수신 | 기존 목록에 append | `MyReviewsPage` | `nextPage_appendsItems` |
-| 카드 클릭 | `/recommend/{id}`로 이동 | `MyReviewsPage` | `cardClick_navigatesToRecommendPage` |
+| 시나리오 |
+|----------|
+| 페이지 진입 |
+| 목록 응답 수신 |
+| 빈 목록 응답 |
+| `last == false` 상태에서 스크롤 하단 도달 |
+| `last == true` 상태에서 스크롤 하단 도달 |
+| 추가 응답 수신 |
+| 카드 클릭 |
 
 ### E2E (Playwright)
 

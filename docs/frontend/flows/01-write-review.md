@@ -18,30 +18,30 @@
 
 ## 테스트 시나리오
 
-### Component (React Testing Library + Vitest)
+### Component — [`ReviewForm.test.tsx`](../../../frontend/src/components/ReviewForm.test.tsx)
 
-| 시나리오 | 기댓값 | 테스트 대상 | 테스트 케이스 |
-|----------|--------|-------------|---------------|
-| 필수 입력값 렌더링 | trackName, artistName, reviewContent 입력 필드 표시 | `ReviewForm` | `rendersRequiredFields` |
-| 선택 입력값 렌더링 | rating, mood, genre, energyLevel, bpm, vocalStyle, instrumentation, isPublic 입력 UI 표시 | `ReviewForm` | `rendersOptionalFields` |
-| 필수 입력값 누락 후 제출 | API 호출 없음, 폼 에러 표시 | `ReviewForm` | `submit_missingRequiredFields_showsValidationErrors` |
-| 선택 입력값 없이 제출 | 필수 필드만으로 submit 가능 | `ReviewForm` | `submit_withoutOptionalFields_allowsSubmit` |
-| 선택 입력값 포함 제출 | 선택 필드 입력값이 submit payload에 포함됨 | `ReviewForm` | `submit_withOptionalFields_includesOptionalValues` |
+| 시나리오 |
+|----------|
+| 필수 입력값 렌더링 |
+| 선택 입력값 렌더링 |
+| 필수 입력값 누락 후 제출 |
+| 선택 입력값 없이 제출 |
+| 선택 입력값 포함 제출 |
 
-### Page (React Testing Library + Vitest + MSW + fake timer)
+### Page — [`WriteReviewPage.test.tsx`](../../../frontend/src/pages/WriteReviewPage.test.tsx)
 
-| 시나리오 | 기댓값 | 테스트 대상 | 테스트 케이스 |
-|----------|--------|-------------|---------------|
-| 제출 중 상태 | submit 버튼 비활성화, loading 표시 | `WriteReviewPage` | `submit_pending_disablesSubmitButton` |
-| 저장 성공 응답 수신 | `data.id`로 `/recommend/{id}` 이동 | `WriteReviewPage` | `submit_success_navigatesToRecommendPage` |
-| 400 에러 수신 | `message`를 폼 에러로 표시 | `WriteReviewPage` | `submit_badRequest_showsFormErrorMessage` |
-| 500 에러 수신 | 일반 에러 메시지 표시 | `WriteReviewPage` | `submit_serverError_showsGenericErrorMessage` |
+| 시나리오 |
+|----------|
+| 제출 중 상태 |
+| 저장 성공 응답 수신 |
+| 400 에러 수신 |
+| 500 에러 수신 |
 
 ### E2E (Playwright)
 
-| 시나리오 | 기댓값 | 테스트 대상 | 테스트 케이스 |
-|----------|--------|-------------|---------------|
-| 성공 경로 (작성 → 저장 → 추천 페이지 이동) | `/recommend/{id}`로 이동 | E2E | `writeReview_success_navigatesToRecommend` |
+| 시나리오 | 기댓값 | 테스트 케이스 |
+|----------|--------|---------------|
+| 성공 경로 (작성 → 저장 → 추천 페이지 이동) | `/recommend/{id}`로 이동 | `writeReview_success_navigatesToRecommend` |
 
 ## 관련 API
 
