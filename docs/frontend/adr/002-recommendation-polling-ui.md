@@ -34,9 +34,9 @@ Polling 규칙:
    - GET 조회에서 `FAILED` 상태를 받았다고 retry를 자동 호출하지 않는다.
    - retry는 사용자가 `POST /api/user-reviews/{id}/retry`를 명시적으로 호출할 때만 실행한다.
 
-4. Timer cleanup
+4. Polling cleanup
    - 페이지 이탈 시 timer를 반드시 정리한다.
-   - `COMPLETED` 또는 `FAILED`에 도달하면 남아 있는 timer를 중단한다.
+   - `COMPLETED` 또는 `FAILED`에 도달하면 다음 polling을 예약하지 않는다.
 
 5. Interval 정책
    - interval 값은 `frontend/src/config/polling.ts`에서 관리한다.
