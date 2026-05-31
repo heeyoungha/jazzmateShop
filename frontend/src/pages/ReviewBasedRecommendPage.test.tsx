@@ -1,10 +1,10 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { RECOMMENDATION_POLLING_INTERVAL_MS } from "../config/polling";
 import {
   failedHandler,
+  failedThenPendingAfterRetryHandler,
   pendingOnlyHandler,
   pendingThenCompletedHandler,
   requestLog,
@@ -22,6 +22,12 @@ function renderRecommendPage() {
       </Routes>
     </MemoryRouter>,
   );
+}
+
+async function advanceTimers(ms: number) {
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(ms);
+  });
 }
 
 describe("ReviewBasedRecommendPage", () => {
@@ -42,15 +48,13 @@ describe("ReviewBasedRecommendPage", () => {
     server.use(pendingOnlyHandler);
     renderRecommendPage();
 
-    expect(
-      await screen.findByText("추천을 준비하고 있습니다."),
-    ).toBeInTheDocument();
+    await advanceTimers(0);
 
-    await act(async () => {
-      vi.advanceTimersByTime(RECOMMENDATION_POLLING_INTERVAL_MS);
-    });
+    expect(screen.getByText("추천을 준비하고 있습니다.")).toBeInTheDocument();
 
-    await waitFor(() => expect(requestLog.reviewDetail).toBe(2));
+    await advanceTimers(RECOMMENDATION_POLLING_INTERVAL_MS);
+
+    expect(requestLog.reviewDetail).toBe(2);
   });
 
   it("completed 상태이면 추천 목록을 렌더링하고 폴링을 중단한다", async () => {
@@ -58,16 +62,14 @@ describe("ReviewBasedRecommendPage", () => {
     server.use(pendingThenCompletedHandler);
     renderRecommendPage();
 
-    expect(
-      await screen.findByText("추천을 준비하고 있습니다."),
-    ).toBeInTheDocument();
+    await advanceTimers(0);
 
-    await act(async () => {
-      vi.advanceTimersByTime(RECOMMENDATION_POLLING_INTERVAL_MS);
-    });
+    expect(screen.getByText("추천을 준비하고 있습니다.")).toBeInTheDocument();
+
+    await advanceTimers(RECOMMENDATION_POLLING_INTERVAL_MS);
 
     // 기준 감상문
-    expect(await screen.findByText(review.trackName)).toBeInTheDocument();
+    expect(screen.getByText(review.trackName)).toBeInTheDocument();
     expect(screen.getByText(review.artistName)).toBeInTheDocument();
     expect(screen.getByText(review.reviewContent)).toBeInTheDocument();
     // 추천 곡 목록
@@ -78,9 +80,7 @@ describe("ReviewBasedRecommendPage", () => {
       screen.getByText(recommendation.recommendationReason),
     ).toBeInTheDocument();
 
-    await act(async () => {
-      vi.advanceTimersByTime(RECOMMENDATION_POLLING_INTERVAL_MS);
-    });
+    await advanceTimers(RECOMMENDATION_POLLING_INTERVAL_MS);
 
     expect(requestLog.reviewDetail).toBe(2);
   });
@@ -90,16 +90,14 @@ describe("ReviewBasedRecommendPage", () => {
     server.use(failedHandler);
     renderRecommendPage();
 
-    expect(
-      await screen.findByText("추천 생성에 실패했습니다."),
-    ).toBeInTheDocument();
+    await advanceTimers(0);
+
+    expect(screen.getByText("추천 생성에 실패했습니다.")).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "다시 시도" }),
     ).toBeInTheDocument();
 
-    await act(async () => {
-      vi.advanceTimersByTime(RECOMMENDATION_POLLING_INTERVAL_MS);
-    });
+    await advanceTimers(RECOMMENDATION_POLLING_INTERVAL_MS);
 
     expect(requestLog.reviewDetail).toBe(1);
   });
@@ -116,14 +114,18 @@ describe("ReviewBasedRecommendPage", () => {
 
   it("다시 시도 클릭 시 retry 요청을 보내고 폴링을 재시작한다", async () => {
     vi.useFakeTimers();
-    server.use(failedHandler);
-    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    server.use(failedThenPendingAfterRetryHandler);
     renderRecommendPage();
 
-    await screen.findByText("추천 생성에 실패했습니다.");
-    await user.click(screen.getByRole("button", { name: "다시 시도" }));
+    await advanceTimers(0);
+
+    screen.getByText("추천 생성에 실패했습니다.");
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "다시 시도" }));
+    });
 
     expect(requestLog.retry).toBe(1);
+    await advanceTimers(0);
     expect(screen.getByText("추천을 준비하고 있습니다.")).toBeInTheDocument();
   });
 
@@ -132,12 +134,11 @@ describe("ReviewBasedRecommendPage", () => {
     server.use(pendingOnlyHandler);
     const { unmount } = renderRecommendPage();
 
-    await screen.findByText("추천을 준비하고 있습니다.");
+    await advanceTimers(0);
+    screen.getByText("추천을 준비하고 있습니다.");
     unmount();
 
-    await act(async () => {
-      vi.advanceTimersByTime(RECOMMENDATION_POLLING_INTERVAL_MS);
-    });
+    await advanceTimers(RECOMMENDATION_POLLING_INTERVAL_MS);
 
     expect(requestLog.reviewDetail).toBe(1);
   });

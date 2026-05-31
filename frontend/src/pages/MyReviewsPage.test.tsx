@@ -1,10 +1,10 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it } from "vitest";
 import { userReviewPage } from "../test/fixtures/api";
-import { requestLog } from "../test/msw/handlers";
+import { lastUserReviewsPageHandler, requestLog } from "../test/msw/handlers";
 import { server } from "../test/msw/server";
 import { MyReviewsPage } from "./MyReviewsPage";
 
@@ -23,7 +23,9 @@ function renderMyReviewsPage() {
 }
 
 function scrollToBottom() {
-  window.dispatchEvent(new Event("scroll"));
+  act(() => {
+    window.dispatchEvent(new Event("scroll"));
+  });
 }
 
 describe("MyReviewsPage", () => {
@@ -73,11 +75,7 @@ describe("MyReviewsPage", () => {
   });
 
   it("마지막 페이지일 때 스크롤 하단 도달 시 추가 조회하지 않는다", async () => {
-    server.use(
-      http.get("/api/user-reviews", () =>
-        HttpResponse.json(userReviewPage({ last: true })),
-      ),
-    );
+    server.use(lastUserReviewsPageHandler);
     renderMyReviewsPage();
 
     await screen.findByText(firstReview.trackName);

@@ -1,10 +1,9 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { HttpResponse, http } from "msw";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it } from "vitest";
 import { criticsPage } from "../test/fixtures/api";
-import { requestLog } from "../test/msw/handlers";
+import { lastCriticsPageHandler, requestLog } from "../test/msw/handlers";
 import { server } from "../test/msw/server";
 import { CriticsReviewPage } from "./CriticsReviewPage";
 
@@ -22,7 +21,9 @@ function renderCriticsReviewPage() {
 }
 
 function scrollToBottom() {
-  window.dispatchEvent(new Event("scroll"));
+  act(() => {
+    window.dispatchEvent(new Event("scroll"));
+  });
 }
 
 describe("CriticsReviewPage", () => {
@@ -51,11 +52,7 @@ describe("CriticsReviewPage", () => {
   });
 
   it("마지막 페이지일 때 스크롤 하단 도달 시 추가 조회하지 않는다", async () => {
-    server.use(
-      http.get("/api/critics", () =>
-        HttpResponse.json(criticsPage({ last: true })),
-      ),
-    );
+    server.use(lastCriticsPageHandler);
     renderCriticsReviewPage();
 
     await screen.findByText(firstCritics.title);
