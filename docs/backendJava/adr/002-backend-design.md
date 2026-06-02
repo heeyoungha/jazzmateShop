@@ -34,27 +34,29 @@ DTO는 역할에 따라 두 종류로 나뉜다.
 
 ---
 
-## Decision 2: recommendationStatus로 AI 추천 처리 상태 관리
+## Decision 2: Java는 recommendationStatus를 UserReview 엔티티 필드로 소유한다
 
 ### Context
 
-`getUserReview` 조회 시 추천 앨범이 없는 경우 두 가지 가능성이 있다:
+공통 상태 전이 모델은 [docs/SDD.md](../../SDD.md#2-추천-상태-전이)를 따른다.
 
-1. AI가 아직 처리 중 (정상 — 재발행 불필요)
-2. AI 처리 실패 (비정상 — 재발행 필요)
+Java 백엔드는 다음 책임을 가진다.
 
-이 둘을 구분하지 않으면 조회할 때마다 이벤트가 중복 발행되거나, 실패한 경우를 영원히 방치하게 된다.
+- 감상문 저장 시 `PENDING` 초기화
+- FastAPI 처리 결과 콜백 수신 후 `COMPLETED` 또는 `FAILED` 전이
+- 프론트 polling 조회 응답에서 현재 상태 제공
+- 사용자 retry 요청 시 `FAILED → PENDING` 전이
+
+`getUserReview` 조회 시 추천 앨범이 없는 경우에도 상태에 따라 의미가 다르다.
+
+- `PENDING`: AI 처리 중이므로 이벤트 재발행 불필요
+- `FAILED`: 실패 상태이므로 사용자의 retry 전까지 자동 재발행 금지
 
 ### Decision
 
-`UserReview` 엔티티에 `RecommendationStatus` 열거형 필드를 추가하여 AI 추천 처리 상태를 관리한다.
+`UserReview` 엔티티에 `RecommendationStatus` 열거형 필드를 두고, Java 백엔드가 추천 상태의 저장 source of truth를 담당한다.
 
-| 상태 | 의미 | 다음 전이 |
-|------|------|-----------|
-| `PENDING` | 생성 직후, 이벤트 발행됨, AI 처리 중 | → COMPLETED / FAILED |
-| `COMPLETED` | AI 추천 앨범 저장 완료 | 종료 |
-| `FAILED` | AI 처리 실패 | → PENDING (재시도 시) |
-
+적용 규칙:
 
 1. `createUserReview`
    - 저장 (status=PENDING) + RecommendationRequestEvent 발행
@@ -69,6 +71,13 @@ DTO는 역할에 따라 두 종류로 나뉜다.
    - 완료 → FastAPI가 `POST /{reviewId}/recommendations`에 `status=COMPLETED` 콜백 → `saveAll()` 일괄 저장 → status=COMPLETED
    - 실패 → FastAPI가 같은 콜백 API에 `status=FAILED` 콜백 → 추천 저장 없이 status=FAILED
    - FastAPI 호출 자체 실패 또는 콜백 미수신 → Spring 실패 정책에 따라 status=FAILED
+
+### Rationale
+
+- 조회 API가 상태 변경을 수행하지 않도록 막는다.
+- 프론트 polling, FastAPI 콜백, retry API가 같은 상태 필드를 기준으로 동작한다.
+- 실패 상태에서 GET 조회 또는 새로고침만으로 FastAPI 요청이 반복되는 무한 재시도 루프를 방지한다.
+- 상태 전이를 `UserReview` 도메인 메서드(`completeRecommendation`, `failRecommendation`, `retryRecommendation`)로 표현할 수 있다.
 
 ---
 

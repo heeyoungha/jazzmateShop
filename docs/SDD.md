@@ -45,13 +45,13 @@
 
 ```
 PENDING (기본값, 감상문 저장 직후)
-  → FastAPI 콜백 수신 + recommend_album 저장 완료  → COMPLETED
-  → AI 요청 실패 또는 콜백 미수신                  → FAILED
+  → FastAPI COMPLETED 콜백 수신 + recommend_album 저장 완료 → COMPLETED
+  → FastAPI FAILED 콜백 수신 / AI 요청 실패 / 콜백 미수신    → FAILED
   → FAILED 상태에서 POST /api/user-reviews/{id}/retry → PENDING (재시도)
 ```
 
 | 상태 | Spring (상태 관리) | 프론트 (UI 분기) | FastAPI (처리 기준) |
 |------|-------------------|-----------------|-------------------|
 | `PENDING` | 감상문 저장 시 초기값 설정<br>FastAPI에 추천 요청 전송 | 대기 중 UI + polling 유지 | 추천 요청 수신 후 처리 시작 |
-| `COMPLETED` | FastAPI 콜백 수신 후 전이 | `recommendations[]` 카드 렌더링 | 추천 결과 콜백 전송 완료 |
-| `FAILED` | AI 요청 실패 시 전이<br>retry 요청 수신 시 PENDING으로 복귀 | 에러 메시지 + retry 버튼 노출 | - (관여 없음) |
+| `COMPLETED` | FastAPI `status=COMPLETED` 콜백 수신 후 추천 저장 및 전이 | `recommendations[]` 카드 렌더링 | 추천 성공 콜백 전송 |
+| `FAILED` | FastAPI `status=FAILED` 콜백 또는 AI 요청 실패 시 전이<br>retry 요청 수신 시 PENDING으로 복귀 | 에러 메시지 + retry 버튼 노출 | 추천 실패 콜백 전송 |
