@@ -202,7 +202,7 @@ GET /api/user-reviews/42
     {
       "id": 1,
       "userReviewId": 42,
-      "albumId": 101,
+      "albumId": "00000000-0000-0000-0000-000000000101",
       "recommendationScore": 0.9423,
       "recommendationReason": "모달 재즈 특유의 정적인 분위기가 유사합니다.",
       "createdAt": "2026-05-23T10:01:00",
@@ -308,12 +308,12 @@ Content-Type: application/json
   "status": "COMPLETED",
   "recommendations": [
     {
-      "albumId": 101,
+      "albumId": "00000000-0000-0000-0000-000000000101",
       "recommendationScore": 0.9423,
       "recommendationReason": "모달 재즈 특유의 정적인 분위기가 유사합니다."
     },
     {
-      "albumId": 205,
+      "albumId": "00000000-0000-0000-0000-000000000205",
       "recommendationScore": 0.8812,
       "recommendationReason": "느린 템포와 서정적인 피아노 라인이 공통적입니다."
     }
@@ -325,7 +325,7 @@ Content-Type: application/json
 |------|------|------|
 | status | Y | `COMPLETED` 또는 `FAILED` |
 | recommendations | Y | `COMPLETED`일 때 TOP K 추천 목록, `FAILED`일 때 빈 배열 |
-| recommendations[].albumId | COMPLETED일 때 Y | `v_embedding_with_album.album_id` (= `embedding_vectors.id`) |
+| recommendations[].albumId | COMPLETED일 때 Y | `v_embedding_with_album.album_id` (= `embedding_vectors.id` UUID 문자열) |
 | recommendations[].recommendationScore | COMPLETED일 때 Y | 추천 점수 (precision=5, scale=4) |
 | recommendations[].recommendationReason | COMPLETED일 때 Y | 추천 사유 |
 | errorCode | FAILED일 때 Y | 실패 원인 코드 |

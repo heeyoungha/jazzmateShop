@@ -19,11 +19,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class DtoFactoryTest {
 
+    private static final String RECOMMENDED_ALBUM_ID = "00000000-0000-0000-0000-000000000010";
+
     // 모든 중첩 클래스에서 공유하는 픽스처
     private final RecommendAlbum REC = RecommendAlbum.builder()
             .id(100)
             .userReviewId(1)
-            .albumId(10)
+            .albumId(RECOMMENDED_ALBUM_ID)
             .recommendationScore(new BigDecimal("0.9800"))
             .recommendationReason("분위기 일치")
             .build();
@@ -73,7 +75,7 @@ class DtoFactoryTest {
             assertThat(resp.isHasRecommendations()).isTrue();
             assertThat(resp.getRecommendations()).hasSize(1);
             assertThat(resp.getRecommendations().get(0).getId()).isEqualTo(100);
-            assertThat(resp.getRecommendations().get(0).getAlbumId()).isEqualTo(10);
+            assertThat(resp.getRecommendations().get(0).getAlbumId()).isEqualTo(RECOMMENDED_ALBUM_ID);
             assertThat(resp.getRecommendations().get(0).getRecommendationScore()).isEqualByComparingTo("0.9800");
             assertThat(resp.getRecommendations().get(0).getRecommendationReason()).isEqualTo("분위기 일치");
         }

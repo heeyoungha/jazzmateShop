@@ -12,7 +12,7 @@ import java.time.LocalDateTime;
 public class RecommendAlbumResponse {
     private Integer id;
     private Integer userReviewId;
-    private Integer albumId;
+    private String albumId;
     private BigDecimal recommendationScore;
     private String recommendationReason;
     private LocalDateTime createdAt;

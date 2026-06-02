@@ -26,7 +26,7 @@ public class RecommendAlbum {
     private Integer userReviewId;
 
     @Column(name = "album_id", nullable = false)
-    private Integer albumId;
+    private String albumId;
 
     @Column(name = "recommendation_score", precision = 5, scale = 4, nullable = false)
     private BigDecimal recommendationScore;

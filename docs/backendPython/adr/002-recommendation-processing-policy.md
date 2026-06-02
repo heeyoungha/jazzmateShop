@@ -87,7 +87,7 @@ FastAPI는 "추천 가능한 앨범 후보"라는 계약만 소비하고, 원천
 
 | 컬럼 | 설명 |
 |---|---|
-| `album_id` | Spring 콜백의 `albumId` |
+| `album_id` | Spring 콜백의 `albumId` (UUID 문자열) |
 | `album_artist` | 추천 사유 생성 컨텍스트 |
 | `album_title` | 추천 사유 생성 컨텍스트 |
 | `url` | 선택적 컨텍스트 또는 디버깅 정보 |
@@ -149,7 +149,7 @@ POST {SPRING_BASE_URL}/api/user-reviews/{reviewId}/recommendations
   "status": "COMPLETED",
   "recommendations": [
     {
-      "albumId": 101,
+      "albumId": "00000000-0000-0000-0000-000000000101",
       "recommendationScore": 0.9423,
       "recommendationReason": "모달 재즈 특유의 정적인 분위기가 유사합니다."
     }
