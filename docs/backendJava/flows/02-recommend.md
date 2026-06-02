@@ -5,9 +5,11 @@
 ## 요구사항
 
 **콜백 수신**
+- FastAPI는 성공/실패 모두 `POST /api/user-reviews/{id}/recommendations`로 처리 결과를 콜백한다.
+- `status=COMPLETED`이면 추천 결과를 `saveAll()`로 하나의 트랜잭션에서 일괄 저장한다.
 - 중복 저장 방지: DB UNIQUE 제약(`uq_recommend_album_review_album`)에 위임.
-- `saveAll()`로 하나의 트랜잭션에서 일괄 저장한다. 중복은 DB UNIQUE 제약 기준으로 감지하고 서비스에서 조용히 스킵한다.
 - 저장 완료 후 `recommendationStatus = COMPLETED`로 전이한다.
+- `status=FAILED`이면 추천 결과를 저장하지 않고 `recommendationStatus = FAILED`로 전이한다.
 
 **결과 조회 polling**
 - 프론트는 `GET /api/user-reviews/{id}`를 주기적으로 호출한다.
@@ -32,7 +34,8 @@
 |----------|--------|---------------|---------------|
 | 1건 저장 → `saveAll()` 1건 호출 | 저장 목록 size==1 | `RecommendAlbumServiceTest` | `createRecommendAlbums_oneItem_savesBatch` |
 | 3건 저장 → `saveAll()` 3건 호출 | 저장 목록 size==3 | `RecommendAlbumServiceTest` | `createRecommendAlbums_threeItems_savesBatch` |
-| 콜백 저장 완료 → 대상 리뷰 상태 COMPLETED 전이 | status=COMPLETED | `RecommendAlbumServiceTest` | `createRecommendAlbums_marksReviewCompleted` |
+| COMPLETED 콜백 저장 완료 → 대상 리뷰 상태 COMPLETED 전이 | status=COMPLETED | `RecommendAlbumServiceTest` | `createRecommendAlbums_completedCallback_marksReviewCompleted` |
+| FAILED 콜백 수신 → 추천 저장 없이 대상 리뷰 상태 FAILED 전이 | status=FAILED, saveAll 호출 없음 | `RecommendAlbumServiceTest` | `createRecommendAlbums_failedCallback_marksReviewFailed` |
 | 존재하지 않는 reviewId → 예외 | ResourceNotFoundException | `RecommendAlbumServiceTest` | `createRecommendAlbums_reviewNotFound_throwsResourceNotFoundException` |
 | 성공 경로 (콜백 수신 → saveAll → polling 조회에서 COMPLETED 확인) | E2E 검증 | Playwright | - |
 
@@ -60,8 +63,8 @@
 → `RecommendAlbumRepository`
 → `UserReview`
 
-- `RecommendAlbumController`: FastAPI 콜백 수신
-- `RecommendAlbumService`: 추천 결과 변환, 일괄 저장, 감상문 상태 `COMPLETED` 전이
+- `RecommendAlbumController`: FastAPI 처리 결과 콜백 수신
+- `RecommendAlbumService`: `COMPLETED`이면 추천 결과 변환/일괄 저장 후 감상문 상태 `COMPLETED` 전이, `FAILED`이면 저장 없이 감상문 상태 `FAILED` 전이
 - `RecommendAlbumRepository`: 추천 결과 저장
 - `UserReview`: 추천 처리 상태 변경
 

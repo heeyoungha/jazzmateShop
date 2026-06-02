@@ -57,15 +57,18 @@
 
 | No | 필드 | 타입 | 필수 | 설명 |
 |----|------|------|------|------|
-| 1 | recommendations | List\<Item\> | Y | 추천 앨범 목록 |
+| 1 | status | RecommendationStatus | Y | FastAPI 처리 결과 (`COMPLETED`/`FAILED`) |
+| 2 | recommendations | List\<Item\> | Y | `COMPLETED`일 때 추천 앨범 목록, `FAILED`일 때 빈 리스트 |
+| 3 | errorCode | String | FAILED일 때 Y | 실패 원인 코드 |
+| 4 | message | String | FAILED일 때 Y | 실패 설명 |
 
 **Item**
 
 | No | 필드 | 타입 | 필수 | 설명 |
 |----|------|------|------|------|
-| 1 | albumId | Integer | Y | v_album_embeddings.album_id (= embedding_vectors.id) |
-| 2 | recommendationScore | BigDecimal | Y | 추천 점수 (precision=5, scale=4) |
-| 3 | recommendationReason | String | Y | 추천 사유 |
+| 1 | albumId | Integer | COMPLETED일 때 Y | v_embedding_with_album.album_id (= embedding_vectors.id) |
+| 2 | recommendationScore | BigDecimal | COMPLETED일 때 Y | 추천 점수 (precision=5, scale=4) |
+| 3 | recommendationReason | String | COMPLETED일 때 Y | 추천 사유 |
 
 ---
 
@@ -232,7 +235,7 @@
 |----|------|------|------|------|
 | 1 | id | id | Integer | PK (SERIAL) |
 | 2 | userReviewId | user_review_id | Integer | 감상문 ID (NOT NULL) |
-| 3 | albumId | album_id | Integer | v_album_embeddings.album_id (NOT NULL) |
+| 3 | albumId | album_id | Integer | v_embedding_with_album.album_id (NOT NULL) |
 | 4 | recommendationScore | recommendation_score | BigDecimal(5,4) | 추천 점수 (NOT NULL) |
 | 5 | recommendationReason | recommendation_reason | TEXT | 추천 사유 (NOT NULL) |
 | 6 | createdAt | created_at | LocalDateTime | @CreationTimestamp |
@@ -266,8 +269,8 @@
 | No | 값 | 의미 | 전이 조건 |
 |----|-----|------|-----------|
 | 1 | PENDING | 추천 요청 대기/진행 중 | 감상문 저장 시 기본값, FAILED에서 재요청 시 |
-| 2 | COMPLETED | 추천 완료 | FastAPI 콜백 수신 후 저장 완료 시 |
-| 3 | FAILED | 추천 실패 | AI 요청 실패 또는 콜백 미수신 시 |
+| 2 | COMPLETED | 추천 완료 | FastAPI `COMPLETED` 콜백 수신 후 저장 완료 시 |
+| 3 | FAILED | 추천 실패 | AI 요청 실패, FastAPI `FAILED` 콜백 수신, 또는 콜백 미수신 시 |
 
 ---
 

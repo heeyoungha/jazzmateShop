@@ -284,15 +284,17 @@ Content-Type: application/json
 > - 이 응답은 추천 처리 시작 확인용이다.
 > - 현재 계약상 Spring은 응답 body를 비즈니스 데이터로 사용하지 않으므로, FastAPI는 `202 Accepted` 상태만 반환해도 된다.
 > - body를 반환하더라도 임베딩 벡터, 유사도 검색 결과, 추천 사유는 포함하지 않는다.
-> - FastAPI는 추천 처리를 완료한 뒤 `POST /api/user-reviews/{reviewId}/recommendations` 콜백으로 추천 결과를 전달한다.
-> - Spring은 FastAPI 호출 실패 시 로그만 기록한다.
+> - FastAPI는 추천 처리를 완료한 뒤 `POST /api/user-reviews/{reviewId}/recommendations` 콜백으로 처리 결과(`COMPLETED`/`FAILED`)를 전달한다.
+> - Spring은 FastAPI 시작 요청 자체가 실패하면 자체 정책에 따라 `recommendationStatus=FAILED`로 전이한다.
 
 ---
 
 ### POST /api/user-reviews/{reviewId}/recommendations
 
 > 호출 주체: FastAPI AI 서버 → Spring Boot (인바운드 콜백)
-> 추천 앨범 batch를 저장한다. 중복은 DB UNIQUE 제약으로 조용히 스킵.
+> 추천 처리 결과를 통지한다.
+> `status=COMPLETED`이면 추천 앨범 batch를 저장하고, `status=FAILED`이면 추천 저장 없이 감상문 상태를 FAILED로 전이한다.
+> 추천 앨범 중복은 DB UNIQUE 제약으로 조용히 스킵.
 
 **Request**
 
@@ -303,6 +305,7 @@ Content-Type: application/json
 
 ```json
 {
+  "status": "COMPLETED",
   "recommendations": [
     {
       "albumId": 101,
@@ -320,9 +323,24 @@ Content-Type: application/json
 
 | 필드 | 필수 | 설명 |
 |------|------|------|
-| albumId | Y | `v_album_embeddings.album_id` (= `embedding_vectors.id`) |
-| recommendationScore | Y | 추천 점수 (precision=5, scale=4) |
-| recommendationReason | Y | 추천 사유 |
+| status | Y | `COMPLETED` 또는 `FAILED` |
+| recommendations | Y | `COMPLETED`일 때 TOP K 추천 목록, `FAILED`일 때 빈 배열 |
+| recommendations[].albumId | COMPLETED일 때 Y | `v_embedding_with_album.album_id` (= `embedding_vectors.id`) |
+| recommendations[].recommendationScore | COMPLETED일 때 Y | 추천 점수 (precision=5, scale=4) |
+| recommendations[].recommendationReason | COMPLETED일 때 Y | 추천 사유 |
+| errorCode | FAILED일 때 Y | 실패 원인 코드 |
+| message | FAILED일 때 Y | 실패 설명 |
+
+**Failure Request 예시**
+
+```json
+{
+  "status": "FAILED",
+  "errorCode": "NO_CANDIDATES",
+  "message": "추천 후보가 없습니다.",
+  "recommendations": []
+}
+```
 
 **Response `200`**
 
@@ -330,7 +348,8 @@ Content-Type: application/json
 (body 없음 — ResponseEntity<Void>)
 ```
 
-> FastAPI는 응답 body를 파싱하지 않는다.
+> 이 응답은 Spring Boot가 FastAPI 콜백 요청을 처리한 뒤 FastAPI에게 반환하는 HTTP 응답이다.
+> FastAPI는 Spring의 응답 body를 파싱하지 않고, 2xx 여부만 성공 기준으로 사용한다.
 
 ---
 
