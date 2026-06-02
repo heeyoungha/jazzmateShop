@@ -10,10 +10,17 @@
 
 ## 테스트 시나리오
 
-| 시나리오 | 기댓값 | 테스트 클래스 | 테스트 메서드 |
-|----------|--------|---------------|---------------|
-| 공개 감상문 목록 → UserReviewSummaryResponse 변환 | size==1, id/trackName 매핑 | `UserReviewServiceTest` | `list_mapToSummaryResponse` |
-| 성공 경로 (목록 조회 → 카드 렌더링) | E2E 검증 | Playwright | - |
+### Service — [`UserReviewServiceTest`](../../../backendJava/src/test/java/shop/jazzmate/jazzmateshop/userReview/UserReviewServiceTest.java)
+
+| 시나리오 |
+|----------|
+| 공개 감상문 목록을 `UserReviewSummaryResponse`로 변환 |
+
+### E2E (Playwright, 추후 구현)
+
+| 시나리오 |
+|----------|
+| 공개 감상문 목록 조회 후 카드 렌더링 |
 
 ## 구현 흐름
 

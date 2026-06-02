@@ -10,28 +10,35 @@
 
 ## 테스트 시나리오
 
-### `DtoFactoryTest`
+### DTO — [`DtoFactoryTest`](../../../backendJava/src/test/java/shop/jazzmate/jazzmateshop/dto/DtoFactoryTest.java)
 
-| 시나리오 | 기댓값 | 테스트 메서드 |
-|----------|--------|---------------|
-| 목록용 DTO 필드 매핑 | id/title/reviewer/date/reviewSummary만 매핑 | `from_mapsOnlySummaryFields` |
-| 상세용 DTO 필드 매핑 | id/title/reviewer/date/content/reviewSummary/url/createdAt 매핑 | `from_mapsOnlyDetailFields` |
+| 시나리오 |
+|----------|
+| 전문가 리뷰 목록용 DTO 필드 매핑 |
+| 전문가 리뷰 상세용 DTO 필드 매핑 |
 
-### `CriticsReviewControllerTest`
+### Controller — [`CriticsReviewControllerTest`](../../../backendJava/src/test/java/shop/jazzmate/jazzmateshop/criticsReview/CriticsReviewControllerTest.java)
 
-| 시나리오 | 기댓값 | 테스트 메서드 |
-|----------|--------|---------------|
-| 존재하는 id 단건 조회 → HTTP 200 | HTTP 200 | `getReview_existingId_returnsDetailResponse` |
-| 존재하지 않는 id → HTTP 404, success=false | success=false | `getReview_notFound_returns404` |
+| 시나리오 |
+|----------|
+| 존재하는 id 단건 조회 시 HTTP 200 반환 |
+| 존재하지 않는 id 조회 시 HTTP 404와 실패 응답 반환 |
 
-### `CriticsReviewServiceTest`
+### Service — [`CriticsReviewServiceTest`](../../../backendJava/src/test/java/shop/jazzmate/jazzmateshop/criticsReview/CriticsReviewServiceTest.java)
 
-| 시나리오 | 기댓값 | 테스트 클래스 | 테스트 메서드 |
-|----------|--------|---------------|---------------|
-| 15건 중 page=0&size=10 조회 | content.size()==10, last==false | `CriticsReviewServiceTest` | `getReviews_firstPage_returnsPageWithLastFalse` |
-| 15건 중 page=1&size=10 조회 | content.size()==5, last==true | `CriticsReviewServiceTest` | `getReviews_lastPage_returnsPageWithLastTrue` |
-| 존재하는 id 단건 조회 | CriticsReview 반환 | `CriticsReviewServiceTest` | `getReview_existingId_returnsCriticsReview` |
-| 존재하지 않는 id → 예외 | ResourceNotFoundException | `CriticsReviewServiceTest` | `getReview_notFound_throwsResourceNotFoundException` |
+| 시나리오 |
+|----------|
+| 전문가 리뷰 첫 페이지 조회 |
+| 전문가 리뷰 마지막 페이지 조회 |
+| 존재하는 id 단건 조회 |
+| 존재하지 않는 id 조회는 예외로 처리 |
+
+### E2E (Playwright, 추후 구현)
+
+| 시나리오 |
+|----------|
+| 전문가 리뷰 목록 조회 후 카드 렌더링 |
+| 전문가 리뷰 상세 조회 후 상세 화면 렌더링 |
 
 ## 구현 흐름
 

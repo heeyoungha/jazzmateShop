@@ -28,31 +28,55 @@
 
 ## 테스트 시나리오
 
-**콜백 저장**
+### DTO — [`RecommendAlbumBatchRequestTest`](../../../backendJava/src/test/java/shop/jazzmate/jazzmateshop/recommendation/dto/RecommendAlbumBatchRequestTest.java)
 
-| 시나리오 | 기댓값 | 테스트 클래스 | 테스트 메서드 |
-|----------|--------|---------------|---------------|
-| 1건 저장 → `saveAll()` 1건 호출 | 저장 목록 size==1 | `RecommendAlbumServiceTest` | `createRecommendAlbums_oneItem_savesBatch` |
-| 3건 저장 → `saveAll()` 3건 호출 | 저장 목록 size==3 | `RecommendAlbumServiceTest` | `createRecommendAlbums_threeItems_savesBatch` |
-| COMPLETED 콜백 저장 완료 → 대상 리뷰 상태 COMPLETED 전이 | status=COMPLETED | `RecommendAlbumServiceTest` | `createRecommendAlbums_completedCallback_marksReviewCompleted` |
-| FAILED 콜백 수신 → 추천 저장 없이 대상 리뷰 상태 FAILED 전이 | status=FAILED, saveAll 호출 없음 | `RecommendAlbumServiceTest` | `createRecommendAlbums_failedCallback_marksReviewFailed` |
-| 존재하지 않는 reviewId → 예외 | ResourceNotFoundException | `RecommendAlbumServiceTest` | `createRecommendAlbums_reviewNotFound_throwsResourceNotFoundException` |
-| 성공 경로 (콜백 수신 → saveAll → polling 조회에서 COMPLETED 확인) | E2E 검증 | Playwright | - |
+| 시나리오 |
+|----------|
+| COMPLETED 콜백 JSON을 Spring Request DTO로 매핑 |
+| FAILED 콜백 JSON을 Spring Request DTO로 매핑 |
 
-**결과 조회**
+### Controller — [`RecommendAlbumControllerTest`](../../../backendJava/src/test/java/shop/jazzmate/jazzmateshop/recommendation/RecommendAlbumControllerTest.java)
 
-| 시나리오 | 기댓값 | 테스트 클래스 | 테스트 메서드 |
-|----------|--------|---------------|---------------|
-| COMPLETED → recommendations 비어있지 않음, hasRecommendations=true | isHasRecommendations=true, recommendations 비어있지 않음, publishEvent 0회 | `UserReviewServiceTest` | `getById_completed_returnsRecommendations` |
-| PENDING → recommendations 빈 리스트, 이벤트 미발행 | status=PENDING, recommendations=[], publishEvent 0회 | `UserReviewServiceTest` | `getById_pending_noEventPublished` |
-| FAILED → recommendations 빈 리스트, retry 자동 실행 없음 | status=FAILED, recommendations=[], publishEvent 0회 | `UserReviewServiceTest` | `getById_failed_noEventPublished` |
-| 존재하지 않는 id → 예외 | ResourceNotFoundException | `UserReviewServiceTest` | `getById_notFound_throwsResourceNotFoundException` |
-| retry: FAILED → PENDING 전이 + 이벤트 재발행 | status=PENDING, publishEvent 1회 | `UserReviewServiceTest` | `retry_failed_changesPendingAndPublishesEvent` |
-| retry: 존재하지 않는 id → 예외 | ResourceNotFoundException | `UserReviewServiceTest` | `retry_notFound_throwsResourceNotFoundException` |
-| 컨트롤러: retry 성공 → ApiResponse 반환 | HTTP 200, success=true, data=null | `UserReviewControllerTest` | `retry_success_returnsApiResponse` |
-| 컨트롤러: retry 존재하지 않는 id → HTTP 404, success=false | success=false | `UserReviewControllerTest` | `retry_notFound_returns404` |
-| 컨트롤러: GET 존재하지 않는 id → HTTP 404, success=false | success=false | `UserReviewControllerTest` | `getById_notFound_returns404` |
-| 성공 경로 (PENDING polling → COMPLETED → recommendations 카드 렌더링) | E2E 검증 | Playwright | - |
+| 시나리오 |
+|----------|
+| COMPLETED 콜백 수신 시 HTTP 200과 빈 body 반환, 서비스 위임 |
+| FAILED 콜백 수신 시 HTTP 200과 빈 body 반환, 서비스 위임 |
+
+### Service — [`RecommendAlbumServiceTest`](../../../backendJava/src/test/java/shop/jazzmate/jazzmateshop/recommendation/RecommendAlbumServiceTest.java)
+
+| 시나리오 |
+|----------|
+| 추천 item 1건을 저장 엔티티 1건으로 변환하고 일괄 저장 |
+| 추천 item 3건을 저장 엔티티 3건으로 변환하고 일괄 저장 |
+| COMPLETED 콜백 저장 완료 후 대상 감상문 상태를 COMPLETED로 전이 |
+| FAILED 콜백 수신 시 추천 결과를 저장하지 않고 대상 감상문 상태를 FAILED로 전이 |
+| 존재하지 않는 reviewId 콜백은 예외로 처리 |
+
+### Service — [`UserReviewServiceTest`](../../../backendJava/src/test/java/shop/jazzmate/jazzmateshop/userReview/UserReviewServiceTest.java)
+
+| 시나리오 |
+|----------|
+| COMPLETED 상태 조회는 추천 목록과 `hasRecommendations=true` 반환 |
+| PENDING 상태 조회는 빈 추천 목록을 반환하고 이벤트를 재발행하지 않음 |
+| FAILED 상태 조회는 빈 추천 목록을 반환하고 retry를 자동 실행하지 않음 |
+| 존재하지 않는 id 조회는 예외로 처리 |
+| FAILED 상태에서 retry 요청 시 PENDING으로 전이하고 추천 요청 이벤트 재발행 |
+| 존재하지 않는 id에 대한 retry 요청은 예외로 처리 |
+
+### Controller — [`UserReviewControllerTest`](../../../backendJava/src/test/java/shop/jazzmate/jazzmateshop/userReview/UserReviewControllerTest.java)
+
+| 시나리오 |
+|----------|
+| retry 성공 응답은 `ApiResponse<Void>`로 래핑 |
+| retry 대상이 존재하지 않으면 HTTP 404와 실패 응답 반환 |
+| 조회 대상이 존재하지 않으면 HTTP 404와 실패 응답 반환 |
+
+### E2E (Playwright, 추후 구현)
+
+| 시나리오 |
+|----------|
+| 콜백 수신, 저장, polling 조회에서 COMPLETED 확인 |
+| PENDING polling, COMPLETED 전이, 추천 카드 렌더링 |
 
 ## 구현 흐름
 
