@@ -27,4 +27,4 @@
 - `UserReviewRepository`: 공개 감상문 최신순 페이지 조회
 - `UserReviewSummaryResponse`: Page content의 목록용 응답 DTO 변환
 
-API/DTO/Entity 상세는 [API_SPEC.md](../../API_SPEC.md), [DB_SPEC.md](../DB_SPEC.md)를 따른다.
+API/DTO/Entity 상세는 [API_SPEC.md](../../API_SPEC.md), [MODEL_SPEC.md](../MODEL_SPEC.md)를 따른다.

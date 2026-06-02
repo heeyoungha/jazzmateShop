@@ -47,4 +47,4 @@
 - `CriticsReviewRepository`: GPT 요약 완료 리뷰 조회
 - `CriticsReview`: 읽기 전용 Entity
 
-API/DTO/Entity 상세는 [API_SPEC.md](../../API_SPEC.md), [DB_SPEC.md](../DB_SPEC.md)를 따른다.
+API/DTO/Entity 상세는 [API_SPEC.md](../../API_SPEC.md), [MODEL_SPEC.md](../MODEL_SPEC.md)를 따른다.

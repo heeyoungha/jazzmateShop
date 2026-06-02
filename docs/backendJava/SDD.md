@@ -45,7 +45,7 @@
 |------|------|
 | [docs/SDD.md](../SDD.md) | 3 에이전트 공통 설계 기준 |
 | [flows/](./flows/) | 플로우별 Java 구현 상세 |
-| [DB_SPEC.md](./DB_SPEC.md) | DB · Entity · DTO 명세 |
+| [MODEL_SPEC.md](./MODEL_SPEC.md) | Model · Entity · DTO 명세 |
 | [API_SPEC.md](../API_SPEC.md) | 전체 API 명세 |
 | [ADR-BJ001](./adr/001-test-strategy.md) | 테스트 전략 결정 |
 | [ADR-BJ002](./adr/002-backend-design.md) | Java 백엔드 설계 결정 |

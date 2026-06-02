@@ -92,4 +92,4 @@
 - `UserReview`: `retryRecommendation()`으로 상태 전이
 - `RecommendationEventListener`: 재발행된 이벤트를 커밋 후 처리
 
-API/DTO/Entity 상세는 [API_SPEC.md](../../API_SPEC.md), [DB_SPEC.md](../DB_SPEC.md)를 따른다.
+API/DTO/Entity 상세는 [API_SPEC.md](../../API_SPEC.md), [MODEL_SPEC.md](../MODEL_SPEC.md)를 따른다.

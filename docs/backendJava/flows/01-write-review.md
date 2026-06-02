@@ -84,4 +84,4 @@
 - `RecommendationEventListener`: `AFTER_COMMIT` + `@Async`로 AI 요청 시작
 - `AiRecommendationClient`: FastAPI 호출, 실패 시 내부 catch
 
-API/DTO/Entity 상세는 [API_SPEC.md](../../API_SPEC.md), [DB_SPEC.md](../DB_SPEC.md)를 따른다.
+API/DTO/Entity 상세는 [API_SPEC.md](../../API_SPEC.md), [MODEL_SPEC.md](../MODEL_SPEC.md)를 따른다.
