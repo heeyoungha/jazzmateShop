@@ -90,4 +90,8 @@ public class UserReview {
     public void completeRecommendation() {
         this.recommendationStatus = RecommendationStatus.COMPLETED;
     }
+
+    public void failRecommendation() {
+        this.recommendationStatus = RecommendationStatus.FAILED;
+    }
 }
