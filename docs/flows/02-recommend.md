@@ -19,14 +19,30 @@
      │                             │  POST /api/user-reviews       │
      │                             │      /{id}/recommendations    │
      │                             │◄──────────────────────────────│
+     │                             │  status == COMPLETED          │
      │                             │  recommend_album 저장          │
-     │                             │  status = COMPLETED            │
      │                             │                               │
      │  GET /api/user-reviews/{id} │                               │
      │  (polling 반복)              │                               │
      │────────────────────────────►│                               │
      │  COMPLETED + recommendations[]                              │
      │◄────────────────────────────│                               │
+```
+
+## 실패 콜백 흐름
+
+```
+[Spring Boot]                    [FastAPI]
+     │                               │
+     │  POST /recommend/by-review    │
+     │──────────────────────────────►│
+     │                               │ 임베딩/검색 실패
+     │                               │ 또는 추천 후보 0건
+     │  POST /api/user-reviews       │
+     │      /{id}/recommendations    │
+     │  { status: "FAILED", ... }    │
+     │◄──────────────────────────────│
+     │  status = FAILED              │
 ```
 
 ## 재시도 흐름 (FAILED 상태)
@@ -53,11 +69,11 @@
 
 ## 모듈별 역할
 
-| 모듈 | 역할 | 상세 문서 |
-|------|------|-----------|
-| 프론트엔드 | `GET /api/user-reviews/{id}` polling, 상태 분기, FAILED 시 retry 버튼 | [frontend/flows/02-recommend.md](../frontend/flows/02-recommend.md) |
-| Spring Boot | 콜백 저장, 상태 전이, 상세 조회 응답, 재시도 처리 | [backendJava/flows/02-recommend.md](../backendJava/flows/02-recommend.md) |
-| FastAPI | 임베딩 생성, 유사도 검색, 추천 사유 생성, 콜백 전송 | [backendPython/flows/02-recommend.md](../backendPython/flows/02-recommend.md) |
+| 모듈 | 상세 문서 |
+|------|-----------|
+| 프론트엔드 | [frontend/flows/02-recommend.md](../frontend/flows/02-recommend.md) |
+| Spring Boot | [backendJava/flows/02-recommend.md](../backendJava/flows/02-recommend.md) |
+| FastAPI | [backendPython/flows/02-recommend.md](../backendPython/flows/02-recommend.md) |
 
 ## 핵심 계약
 
@@ -65,6 +81,7 @@
 - `PENDING` → 대기 UI 유지 + polling 지속
 - `COMPLETED` → `recommendations[]` 카드 렌더링 + polling 중단
 - `FAILED` → 에러 메시지 + retry 버튼 노출 + polling 중단
+- FastAPI는 처리 성공/실패 모두 `POST /api/user-reviews/{reviewId}/recommendations`로 콜백한다.
 - retry는 `POST /api/user-reviews/{id}/retry`에서만 수행한다.
 - GET 조회에서 `FAILED` 상태를 자동 재시도하지 않는다.
 

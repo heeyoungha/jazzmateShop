@@ -13,7 +13,7 @@ AllAboutJazz (외부)
     │  DAG 3: 임베딩 생성 및 저장
     ▼
 Supabase (PostgreSQL)
-    │  v_album_embeddings 뷰 (읽기 전용)
+    │  v_embedding_with_album 뷰 (읽기 전용)
     ▼
 [FastAPI AI 서버]  ←── POST /recommend/by-review  ←── [Spring Boot]
     │

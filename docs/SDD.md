@@ -3,6 +3,7 @@
 > - 프론트엔드 · Spring Boot · FastAPI 에이전트가 공통으로 참조하는 설계 문서입니다.
 > - 모듈별 구현 상세: 
 >    - [backendJava/SDD.md](./backendJava/SDD.md)
+>    - [backendPython/SDD.md](./backendPython/SDD.md)
 >    - [frontend/SDD.md](./frontend/SDD.md)
 
 ## 문서 운영 원칙
