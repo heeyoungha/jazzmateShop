@@ -1,0 +1,8 @@
+from enum import Enum
+
+
+class RecommendationErrorCode(str, Enum):
+    NO_CANDIDATES = "NO_CANDIDATES"
+    EMBEDDING_FAILED = "EMBEDDING_FAILED"
+    SEARCH_FAILED = "SEARCH_FAILED"
+    CALLBACK_FAILED = "CALLBACK_FAILED"
