@@ -5,7 +5,7 @@
 ## 요구사항
 
 - FastAPI는 감상문 저장 자체에는 참여하지 않는다.
-- Spring Boot가 트랜잭션 커밋 후 전송하는 `POST /recommend/review`를 수신한다.
+- Spring Boot가 트랜잭션 커밋 후 전송하는 추천 시작 API 요청을 수신한다.
 - 유효한 요청이면 `202 Accepted`를 반환하고 추천 처리를 백그라운드로 시작한다.
 - 추천 처리 상세는 [02-recommend.md](./02-recommend.md)를 따른다.
 
@@ -40,4 +40,4 @@
 
 ## 관련 API
 
-- [API_SPEC.md — POST /recommend/review](../../API_SPEC.md#post-recommendreview)
+- [API_SPEC.md — Recommendation API](../../API_SPEC.md#3-recommendation-api)

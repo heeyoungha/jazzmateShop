@@ -4,6 +4,8 @@
 > DTO·Entity 필드 상세: [DTO_SPEC.md](./DTO_SPEC.md)
 > 플로우별 맥락: [SDD.md](./SDD.md)
 
+> HTTP endpoint 경로의 source of truth는 이 문서다. ADR, architecture, flow 문서는 경로 문자열을 반복하지 않고 역할명과 이 문서 링크를 우선 사용한다.
+
 ---
 
 ## 목차

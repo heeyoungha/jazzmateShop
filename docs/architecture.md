@@ -15,7 +15,7 @@ AllAboutJazz (외부)
 Supabase (PostgreSQL)
     │  v_embedding_with_album 뷰 (읽기 전용)
     ▼
-[FastAPI AI 서버]  ←── POST /recommend/by-review  ←── [Spring Boot]
+[FastAPI AI 서버]  ←── 추천 시작 API  ←── [Spring Boot]
     │
     │ 추천 결과 콜백
     │ POST /api/user-reviews/{reviewId}/recommendations

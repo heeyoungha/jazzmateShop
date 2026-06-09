@@ -218,7 +218,7 @@ nginx는 `/ai-api/**`를 FastAPI로 직접 보내지 않는다. Java가 `/ai-api
 | 브라우저 요청 | Java 수신 | FastAPI 전달 |
 |--------------|----------|-------------|
 | `GET /ai-api/admin/data-quality` | `/ai-api/admin/data-quality` | `GET /admin/data-quality` |
-| `POST /ai-api/recommend/by-review` | `/ai-api/recommend/by-review` | `POST /recommend/by-review` |
+| `POST /ai-api/recommend/review` | `/ai-api/recommend/review` | `POST /recommend/review` |
 
 ### 4-5. CORS 정책
 

@@ -11,7 +11,7 @@
      │                             │  - RecommendationRequestEvent │
      │                             │  발행 (AFTER_COMMIT, @Async)   │
      │                             │                               │
-     │                             │  POST /recommend/by-review    │
+     │                             │  추천 시작 API 호출             │
      │  navigate(/recommend/{id})  │  (@Async)                     │
      │◄────────────────────────────│──────────────────────────────►│
      │  201 { data.id }            │                               │
@@ -35,4 +35,4 @@
 ## 관련 API
 
 - [API_SPEC.md — POST /api/user-reviews](../API_SPEC.md#post-apiuser-reviews)
-- [API_SPEC.md — POST /recommend/by-review](../API_SPEC.md#post-recommendby-review)
+- [API_SPEC.md — Recommendation API](../API_SPEC.md#3-recommendation-api)

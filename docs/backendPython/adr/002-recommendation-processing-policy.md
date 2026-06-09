@@ -7,7 +7,7 @@ FastAPI 추천 서버는 Spring Boot로부터 감상문 본문을 받아 앨범 
 공통 API 계약은 다음 흐름을 요구한다.
 
 ```text
-Spring Boot -> POST /recommend/by-review -> FastAPI
+Spring Boot -> 추천 시작 API -> FastAPI
 FastAPI -> POST /api/user-reviews/{reviewId}/recommendations -> Spring Boot
 ```
 

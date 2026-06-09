@@ -92,5 +92,5 @@
 
 ## 관련 API
 
-- [API_SPEC.md — POST /recommend/review](../../API_SPEC.md#post-recommendby-review)
+- [API_SPEC.md — Recommendation API](../../API_SPEC.md#3-recommendation-api)
 - [API_SPEC.md — POST /api/user-reviews/{reviewId}/recommendations](../../API_SPEC.md#post-apiuser-reviewsreviewidrecommendations)
