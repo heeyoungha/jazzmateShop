@@ -12,7 +12,7 @@
 | [SDD.md](../docs/backendJava/SDD.md) | 레이어 책임 경계, 플로우 문서 인덱스, 공통 설계 원칙 | 기능 구현 전, 공통 설계 변경 시 |
 | [flows/](../docs/backendJava/flows/) | 프론트 페이지별 사용자 플로우, 테스트 시나리오, 관련 구성요소 | 플로우 구현 전, 플로우 설계 변경 시 |
 | [API_SPEC.md](../docs/API_SPEC.md) | 전체 엔드포인트 요청/응답 명세 | API 추가/변경 시 |
-| [DB_SPEC.md](../docs/backendJava/DB_SPEC.md) | DB 테이블·Entity·DTO·Enum 필드 명세 | DB/Entity/DTO 추가·수정 시 |
+| [MODEL_SPEC.md](../docs/backendJava/MODEL_SPEC.md) | Java 백엔드 Model·DTO·Entity·Enum 필드 명세 | Model/Entity/DTO 추가·수정 시 |
 
 ---
 
