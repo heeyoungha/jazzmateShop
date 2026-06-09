@@ -223,6 +223,18 @@ FastAPI는 실패 시 DB 상태를 직접 변경하지 않는다.
 
 Spring의 `FAILED` 전이 정책과 retry API가 최종 사용자 흐름을 관리한다.
 
+실패 `errorCode`는 `app/core/error_codes.py`의 `RecommendationErrorCode(str, Enum)`으로 관리한다. 오타 방지와 타입 안전성을 위해 문자열 하드코딩을 금지한다.
+
+| errorCode | 발생 조건 |
+|---|---|
+| `EMBEDDING_FAILED` | OpenAI 임베딩 실패 |
+| `SEARCH_FAILED` | 유사도 검색 실패 |
+| `NO_CANDIDATES` | 추천 후보 0건 |
+| `CALLBACK_FAILED` | Spring 콜백 전송 실패, 내부 로그/관측용 |
+
+`CALLBACK_FAILED`는 Spring에 다시 전달되는 실패 payload의 `errorCode`가 아니다.
+콜백 전송 자체가 실패한 상황에서는 Spring에 상태를 알릴 추가 콜백 경로가 없으므로, FastAPI 내부 로그와 관측 지표에서만 사용한다.
+
 추천 후보 0건은 정상적인 "빈 추천 결과"가 아니라 데이터 준비, View 정의, 권한, 필터링, 임베딩 차원 불일치 같은 검색 준비 상태 이상으로 본다.
 단순 TOP K 검색은 유사도가 낮아도 후보가 있으면 결과를 반환해야 하므로, 0건은 실패로 기록한다.
 
