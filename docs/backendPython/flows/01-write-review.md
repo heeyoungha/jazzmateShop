@@ -5,7 +5,7 @@
 ## 요구사항
 
 - FastAPI는 감상문 저장 자체에는 참여하지 않는다.
-- Spring Boot가 트랜잭션 커밋 후 전송하는 `POST /recommend/by-review`를 수신한다.
+- Spring Boot가 트랜잭션 커밋 후 전송하는 `POST /recommend/review`를 수신한다.
 - 유효한 요청이면 `202 Accepted`를 반환하고 추천 처리를 백그라운드로 시작한다.
 - 추천 처리 상세는 [02-recommend.md](./02-recommend.md)를 따른다.
 
@@ -25,19 +25,19 @@
 
 | 시나리오 | 기댓값 | 테스트 메서드 |
 |----------|--------|---------------|
-| Spring 추천 요청 수신 | HTTP 202, background task 등록 | `post_byReview_validRequest_returns202` |
-| `review_id` 누락 | HTTP 422 | `post_byReview_missingReviewId_returns422` |
-| `review_content` 누락 | HTTP 422 | `post_byReview_missingReviewContent_returns422` |
-| `review_content` 공백 | HTTP 422 | `post_byReview_blankReviewContent_returns422` |
-| `review_id`가 0 이하 | HTTP 422 | `post_byReview_nonPositiveReviewId_returns422` |
+| Spring 추천 요청 수신 | HTTP 202, background task 등록 | `test_post_by_review_valid_request_returns_202` |
 
-### `RecommendByReviewRequestTest`
+### `RecommendRequestDtoTest`
 
 | 시나리오 | 기댓값 | 테스트 메서드 |
 |----------|--------|---------------|
-| 유효한 요청 DTO | `review_id`, `review_content` 매핑 | `validRequest_mapsFields` |
-| 공백 포함 본문 | trim 후 non-empty 검증 | `reviewContent_trimsWhitespace` |
+| 유효한 요청 DTO | `review_id`, `review_content` 매핑 | `test_valid_request_maps_fields` |
+| 공백 포함 본문 | trim 후 non-empty 검증 | `test_review_content_trims_whitespace` |
+| 공백만 있는 본문 | `ValueError` 발생 | `test_review_content_blank_raises_validation_error` |
+| `review_id` 누락 | `ValueError` 발생 | `test_missing_review_id_raises_validation_error` |
+| `review_content` 누락 | `ValueError` 발생 | `test_missing_review_content_raises_validation_error` |
+| `review_id`가 0 이하 | `ValueError` 발생 | `test_non_positive_review_id_raises_validation_error` |
 
 ## 관련 API
 
-- [API_SPEC.md — POST /recommend/by-review](../../API_SPEC.md#post-recommendby-review)
+- [API_SPEC.md — POST /recommend/review](../../API_SPEC.md#post-recommendreview)
