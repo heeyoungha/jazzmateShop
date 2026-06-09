@@ -15,7 +15,7 @@
    - GET /api/user-reviews/{id}
    - POST /api/user-reviews/{id}/retry
 3. [Recommendation API](#3-recommendation-api)
-   - POST /recommend/by-review  ← Spring → FastAPI (아웃바운드)
+   - POST /recommend/review  ← Spring → FastAPI (아웃바운드)
    - POST /api/user-reviews/{reviewId}/recommendations  ← FastAPI → Spring (인바운드)
 4. [CriticsReview API](#4-criticsreview-api)
    - GET /api/critics
@@ -254,7 +254,7 @@ POST /api/user-reviews/42/retry
 
 ## 3. Recommendation API
 
-### POST /recommend/by-review
+### POST /recommend/review
 
 > - 호출 주체: Spring Boot → FastAPI (아웃바운드)
 > - 감상문 저장 트랜잭션 커밋 후 `RecommendationEventListener`가 `@Async` + `AFTER_COMMIT`으로 호출한다.
@@ -263,7 +263,7 @@ POST /api/user-reviews/42/retry
 **Request**
 
 ```
-POST {FASTAPI_BASE_URL}/recommend/by-review
+POST {FASTAPI_BASE_URL}/recommend/review
 Content-Type: application/json
 ```
 
@@ -342,7 +342,7 @@ Content-Type: application/json
 }
 ```
 
-**Response `200`**
+**Response `204 No Content`**
 
 ```
 (body 없음 — ResponseEntity<Void>)
