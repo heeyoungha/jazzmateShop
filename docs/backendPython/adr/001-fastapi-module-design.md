@@ -196,6 +196,45 @@ backendPython/
 
 ---
 
+## Decision 5: 객체 생성과 리소스 lifecycle 책임을 분리한다
+
+FastAPI 앱에서는 객체를 세 종류로 나누어 생성 위치와 종료 책임을 고정한다.
+
+| 종류 | 예시 | 생성 위치 | 종료 위치 | 주입 방식 |
+|---|---|---|---|---|
+| Request-scoped 협력 객체 | Service, Repository wrapper, Client wrapper | Dependency provider | 종료 책임 없음 | `Depends()` |
+| App-scoped 외부 리소스 | `httpx.AsyncClient`, DB client, OpenAI client | Lifespan startup | Lifespan shutdown | `request.app.state`를 통해 provider가 주입 |
+| 순수 값/설정 | settings, TOP K, model name | Config module | 종료 없음 | provider 또는 생성자 인자 |
+
+Router는 HTTP 요청/응답 경계만 담당하고, 서비스, 클라이언트, Repository 같은 협력 객체를 직접 생성하지 않는다.
+협력 객체는 FastAPI dependency provider를 통해 주입받는다.
+
+| 구성요소 | 책임 |
+|---|---|
+| Router | 요청 검증, 응답 상태 결정, background task 등록 |
+| Dependency provider | 서비스 조립, 설정 주입, app state 접근 |
+| Lifespan | HTTP client, DB client처럼 생성/종료가 필요한 리소스 lifecycle 관리 |
+| Service | HTTP 계층을 모른 채 유스케이스 조합 |
+
+### Rules
+
+- Router는 협력 객체를 직접 생성하지 않는다.
+- Service는 닫아야 하는 외부 리소스를 직접 생성하지 않는다.
+- Client wrapper는 닫아야 하는 리소스를 직접 만들지 않고 주입받는다.
+- 닫아야 하는 리소스는 lifespan에서 만들고 lifespan에서 닫는다.
+- Dependency provider는 app-scoped 리소스를 꺼내 request-scoped 객체를 조립한다.
+- 테스트는 `app.dependency_overrides`로 provider를 교체하거나, service 단위 테스트에서는 생성자에 fake를 직접 주입한다.
+
+### Rationale
+
+객체 생성 위치와 종료 위치가 분리되면 connection leak, 테스트 monkeypatch 남용, Router-Service 결합이 생긴다.
+FastAPI에서는 lifespan이 app-scoped 리소스 lifecycle을 담당하고, dependency provider가 request-scoped 객체 조립을 담당해야 한다.
+
+이 원칙은 Router와 Service가 특정 구현 클래스의 생성자, 외부 client lifecycle, 환경 설정 조립 방식을 알지 않도록 하기 위한 것이다.
+FastAPI의 dependency provider와 lifespan을 사용하면 endpoint 테스트에서 의존성을 안정적으로 교체할 수 있고, 앱 시작/종료 시점에 맞춰 외부 리소스를 관리할 수 있다.
+
+---
+
 ## Consequences
 
 - Router 테스트는 HTTP 계약과 background task 등록에 집중한다.
@@ -204,3 +243,4 @@ backendPython/
 - `v_embedding_with_album` 뷰 스키마가 추천 검색 요구사항과 맞지 않으면 구현보다 DB 설계 문서를 먼저 갱신해야 한다.
 - background task가 프로세스 장애 시 유실될 수 있으므로, 운영에서 유실 허용이 어려워지면 queue/worker ADR을 별도로 작성해야 한다.
 - 레이어가 분리되는 만큼 작은 클래스와 파일이 늘어나지만, 외부 의존성 mock 테스트 비용은 줄어든다.
+- Router와 Service는 dependency provider를 통해 협력 객체를 받으므로, HTTP 경계와 서비스 조립/lifecycle 관리가 분리된다.
