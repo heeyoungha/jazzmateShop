@@ -216,6 +216,30 @@ Router는 HTTP 요청/응답 경계만 담당하고, 서비스, 클라이언트,
 | Lifespan | HTTP client, DB client처럼 생성/종료가 필요한 리소스 lifecycle 관리 |
 | Service | HTTP 계층을 모른 채 유스케이스 조합 |
 
+### DB client wiring contract
+
+추천 검색 Repository는 `v_embedding_with_album` 조회를 수행하므로 운영 환경에서 DB client가 필수다.
+따라서 DB client 누락은 추천 검색 시점의 `None.from_(...)` 오류로 드러나면 안 되고, 앱 리소스 조립 단계에서 명확히 실패해야 한다.
+
+```text
+FastAPI lifespan startup
+  -> Supabase/PostgreSQL client 생성
+  -> app.state.database 저장
+
+request
+  -> get_recommendation_service(request)
+  -> AlbumEmbeddingRepository(database=request.app.state.database)
+  -> RecommendationService(album_embedding_repository=...)
+```
+
+구현 규칙:
+
+- Lifespan은 운영용 DB client를 생성하고 `app.state.database` 같은 고정 이름으로 보관한다.
+- Dependency provider는 `request.app.state.database`를 읽어 Repository를 조립한다.
+- DB client가 없으면 dependency provider 또는 Repository 생성자에서 설정 누락 예외를 발생시킨다.
+- Repository 생성자는 테스트 fake를 허용하되 `database=None`을 정상 값으로 취급하지 않는다.
+- Service 기본 생성자가 운영용 Repository를 `database=None`으로 만드는 구조는 금지한다. 테스트에서는 fake repository를 생성자 인자로 명시적으로 주입한다.
+
 ### Rules
 
 - Router는 협력 객체를 직접 생성하지 않는다.
@@ -223,6 +247,8 @@ Router는 HTTP 요청/응답 경계만 담당하고, 서비스, 클라이언트,
 - Client wrapper는 닫아야 하는 리소스를 직접 만들지 않고 주입받는다.
 - 닫아야 하는 리소스는 lifespan에서 만들고 lifespan에서 닫는다.
 - Dependency provider는 app-scoped 리소스를 꺼내 request-scoped 객체를 조립한다.
+- Dependency provider는 필수 app-scoped 리소스가 없을 때 명확한 설정 오류를 발생시킨다.
+- Repository와 Client wrapper는 필수 외부 client 인자가 `None`이면 생성 시점에 실패한다.
 - 테스트는 `app.dependency_overrides`로 provider를 교체하거나, service 단위 테스트에서는 생성자에 fake를 직접 주입한다.
 
 ### Rationale
@@ -232,6 +258,7 @@ FastAPI에서는 lifespan이 app-scoped 리소스 lifecycle을 담당하고, dep
 
 이 원칙은 Router와 Service가 특정 구현 클래스의 생성자, 외부 client lifecycle, 환경 설정 조립 방식을 알지 않도록 하기 위한 것이다.
 FastAPI의 dependency provider와 lifespan을 사용하면 endpoint 테스트에서 의존성을 안정적으로 교체할 수 있고, 앱 시작/종료 시점에 맞춰 외부 리소스를 관리할 수 있다.
+또한 필수 app-scoped 리소스 누락을 조기에 발견할 수 있어 테스트 fake 중심 구현이 운영 dependency graph의 미완성을 숨기지 않는다.
 
 ---
 
@@ -244,3 +271,4 @@ FastAPI의 dependency provider와 lifespan을 사용하면 endpoint 테스트에
 - background task가 프로세스 장애 시 유실될 수 있으므로, 운영에서 유실 허용이 어려워지면 queue/worker ADR을 별도로 작성해야 한다.
 - 레이어가 분리되는 만큼 작은 클래스와 파일이 늘어나지만, 외부 의존성 mock 테스트 비용은 줄어든다.
 - Router와 Service는 dependency provider를 통해 협력 객체를 받으므로, HTTP 경계와 서비스 조립/lifecycle 관리가 분리된다.
+- 운영 DB client wiring이 누락되면 요청 처리 중 AttributeError가 아니라 설정 오류로 조기에 실패한다.

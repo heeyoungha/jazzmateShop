@@ -9,6 +9,8 @@
 - 추천 사유는 유사도 검색 결과와 `review_content`를 함께 사용해 생성한다.
 - Spring 콜백 전송 실패 시 재시도 정책은 별도 결정 전까지 로그만 기록한다.
 - FastAPI는 `user_reviews`, `recommend_album`을 직접 수정하지 않는다. 추천 결과 저장과 상태 전이는 Spring Boot 콜백에 위임한다.
+- 운영 경로에서 유사도 검색 Repository는 FastAPI lifespan에서 생성된 DB client를 dependency provider를 통해 주입받는다.
+- DB client 설정이 누락되면 `None.from_(...)` 같은 런타임 오류가 아니라 설정 누락 예외로 실패한다.
 
 ## 관련 구성요소
 
@@ -55,10 +57,19 @@
 
 | 시나리오 |
 |----------|
+| DB client 없이 Repository를 생성하면 설정 누락 예외 발생 |
 | TOP K 유사도 검색은 similarity DESC 정렬과 최대 K건 반환 |
 | 조회 대상은 `v_embedding_with_album`으로 고정 |
 | 후보 없음은 빈 리스트 반환 |
 | DB 조회 실패는 도메인 예외로 변환 |
+
+### API Dependency — `RecommendationDependencyTest`
+
+| 시나리오 |
+|----------|
+| `app.state.database`의 DB client를 Repository에 주입해 `RecommendationService` 생성 |
+| DB client가 없으면 설정 누락 예외 발생 |
+| endpoint 테스트는 `dependency_overrides`로 service를 교체하고 운영 DB client에 의존하지 않음 |
 
 ### Service — `RecommendationReasonServiceTest`
 

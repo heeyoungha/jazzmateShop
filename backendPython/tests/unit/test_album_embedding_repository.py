@@ -1,7 +1,7 @@
 import pytest
 
 from app.core.config import settings
-from app.core.exceptions import RepositoryError
+from app.core.exceptions import ConfigurationError, RepositoryError
 from app.repositories.album_embedding_repository import AlbumEmbeddingRepository
 
 
@@ -39,6 +39,12 @@ class FakeDatabaseClient:
 
     def from_(self, table_name):
         return self.query.from_(table_name)
+
+
+def test_album_embedding_repository_requires_database_client():
+    """DB client 없이 Repository를 생성하면 설정 누락 예외가 발생한다."""
+    with pytest.raises(ConfigurationError, match="database client"):
+        AlbumEmbeddingRepository(database=None)
 
 
 @pytest.mark.asyncio
