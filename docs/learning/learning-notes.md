@@ -3,7 +3,7 @@
 > 이 파일은 `/explain-python` 커맨드가 자동으로 읽고 업데이트합니다.
 > 새로 배운 개념은 아래에 추가됩니다.
 
-최종 업데이트: 2026-06-09
+최종 업데이트: 2026-06-10
 
 ---
 
@@ -125,3 +125,38 @@
 - `yield`가 없는 fixture는 teardown이 없다는 뜻 — 이 경우 일반 import가 더 적합할 수 있다.
 - ADR-BP003 Decision 5: `conftest.py`는 pytest fixture만 두는 것이 원칙.
 - 파일: `backendPython/tests/conftest.py`, `backendPython/tests/fixtures.py`
+
+### `dependency_overrides` — FastAPI 의존성 교체
+- `app.dependency_overrides[원본함수] = lambda: 가짜객체` 로 테스트 중 의존성을 교체한다.
+- monkeypatch가 클래스 메서드를 직접 덮어쓰는 것과 달리, `dependency_overrides`는 FastAPI의 DI 컨테이너를 통해 교체하므로 실제 요청 흐름(`Depends()` → 엔드포인트)을 그대로 테스트한다.
+- **monkeypatch와의 차이**:
+  - `monkeypatch.setattr(RecommendationService, "recommend_by_review", spy)` → 클래스 자체를 패치 (FastAPI DI 우회)
+  - `app.dependency_overrides[get_recommendation_service] = lambda: Fake()` → DI 경로를 유지하면서 구현체만 교체
+- `Depends()`로 주입된 의존성을 교체할 때는 반드시 `dependency_overrides`를 사용해야 한다.
+- 파일: `backendPython/tests/integration/test_recommendation_flow.py`, `backendPython/app/api/dependencies.py`
+
+### `dependency_overrides.clear()` — 테스트 격리
+- `dependency_overrides`는 `app` 객체에 딕셔너리로 저장되므로, 테스트 간에 공유된다.
+- 한 테스트에서 교체한 의존성이 다음 테스트에 영향을 주는 것을 "테스트 오염(test pollution)"이라 한다.
+- `conftest.py`의 `client` fixture에서 테스트 시작 전·후에 각각 `.clear()`를 호출해 격리한다.
+- 파일: `backendPython/tests/conftest.py`
+
+### `ConfigurationError` — 명시적 설정 누락 예외
+- `None` 체크 후 `raise ConfigurationError(메시지)`로 "왜 실패했는지"를 명확히 알린다.
+- `NoneType has no attribute ...` 같은 암묵적 오류 대신 명시적 예외를 던지는 것이 디버깅에 유리하다.
+- `pytest.raises(ConfigurationError, match="키워드")`로 예외 타입과 메시지를 함께 검증한다.
+- 파일: `backendPython/app/core/exceptions.py`, `backendPython/tests/unit/test_dependencies.py`
+
+### `SimpleNamespace` — 경량 가짜 객체
+- `from types import SimpleNamespace`로 임포트. 동적으로 속성을 붙일 수 있는 빈 객체.
+- `obj = SimpleNamespace(a=1, b=2)` → `obj.a == 1`
+- Fake 클래스를 따로 선언하지 않고 단순한 구조체가 필요할 때 사용한다.
+- 예: `request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(database=db)))`
+- `type()` 동적 클래스 생성과 비슷하지만, 중첩 구조를 표현하기 더 자연스럽다.
+- 파일: `backendPython/tests/unit/test_dependencies.py`
+
+### `getattr(obj, key, default)` — 안전한 속성 접근
+- `obj.key`는 속성이 없으면 `AttributeError`를 발생시킨다.
+- `getattr(obj, "key", None)`은 속성이 없으면 `None`을 반환한다.
+- 런타임에 속성 존재 여부가 불확실한 경우(예: `app.state.database` 미설정)에 사용한다.
+- 파일: `backendPython/app/api/dependencies.py`

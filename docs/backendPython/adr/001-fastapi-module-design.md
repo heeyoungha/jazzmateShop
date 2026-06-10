@@ -216,28 +216,46 @@ Router는 HTTP 요청/응답 경계만 담당하고, 서비스, 클라이언트,
 | Lifespan | HTTP client, DB client처럼 생성/종료가 필요한 리소스 lifecycle 관리 |
 | Service | HTTP 계층을 모른 채 유스케이스 조합 |
 
-### DB client wiring contract
+### App-scoped resource wiring contract
 
 추천 검색 Repository는 `v_embedding_with_album` 조회를 수행하므로 운영 환경에서 DB client가 필수다.
-따라서 DB client 누락은 추천 검색 시점의 `None.from_(...)` 오류로 드러나면 안 되고, 앱 리소스 조립 단계에서 명확히 실패해야 한다.
+임베딩 생성, 추천 사유 생성, Spring 콜백 전송도 외부 I/O를 수행하므로 OpenAI async client와 HTTP client가 필수다.
+따라서 필수 client 누락은 추천 처리 중 `None.from_(...)`, client lazy 생성, unclosed client warning 같은 우연한 런타임 증상으로 드러나면 안 되고, 앱 리소스 조립 단계에서 명확히 실패해야 한다.
 
 ```text
 FastAPI lifespan startup
   -> Supabase/PostgreSQL client 생성
+  -> OpenAI Embeddings async client 생성
+  -> OpenAI Chat async client 생성
+  -> Spring callback용 httpx.AsyncClient 생성
   -> app.state.database 저장
+  -> app.state.openai_embedding_client 저장
+  -> app.state.openai_chat_client 저장
+  -> app.state.spring_http_client 저장
 
 request
   -> get_recommendation_service(request)
   -> AlbumEmbeddingRepository(database=request.app.state.database)
-  -> RecommendationService(album_embedding_repository=...)
+  -> EmbeddingService(openai_client=request.app.state.openai_embedding_client)
+  -> RecommendationReasonService(openai_client=request.app.state.openai_chat_client)
+  -> SpringCallbackClient(http_client=request.app.state.spring_http_client)
+  -> RecommendationService(...)
+
+FastAPI lifespan shutdown
+  -> OpenAI async client close
+  -> httpx.AsyncClient.aclose()
+  -> DB client가 close API를 제공하면 close
 ```
 
 구현 규칙:
 
-- Lifespan은 운영용 DB client를 생성하고 `app.state.database` 같은 고정 이름으로 보관한다.
-- Dependency provider는 `request.app.state.database`를 읽어 Repository를 조립한다.
-- DB client가 없으면 dependency provider 또는 Repository 생성자에서 설정 누락 예외를 발생시킨다.
-- Repository 생성자는 테스트 fake를 허용하되 `database=None`을 정상 값으로 취급하지 않는다.
+- Lifespan은 운영용 DB client, OpenAI async client, Spring 콜백용 HTTP client를 생성하고 `app.state`의 고정 이름으로 보관한다.
+- Dependency provider는 `request.app.state`의 app-scoped 리소스를 읽어 Repository, Service, Client wrapper를 조립한다.
+- 필수 app-scoped 리소스가 없으면 dependency provider에서 ConfigurationError를 발생시킨다.
+- Repository, Service, Client wrapper는 필수 의존성을 생성자 인자로 받는다.
+- 운영 경로에서 기본 생성이나 외부 client 내부 생성을 하지 않는다.
+- 생성자는 테스트 fake를 허용하되 필수 의존성 `None`을 정상 값으로 취급하지 않는다.
+- 닫아야 하는 client를 wrapper 내부에서 직접 생성해야 하는 테스트/특수 경로가 생기면, 해당 wrapper가 명시적인 `aclose()` 책임을 가져야 한다. 운영 경로에서는 이 예외를 사용하지 않는다.
 - Service 기본 생성자가 운영용 Repository를 `database=None`으로 만드는 구조는 금지한다. 테스트에서는 fake repository를 생성자 인자로 명시적으로 주입한다.
 
 ### Rules

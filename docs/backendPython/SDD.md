@@ -29,6 +29,15 @@ FastAPI는 추천 상태와 추천 결과 저장의 source of truth가 아니다
 | Schema | Pydantic 요청/콜백/내부 DTO | DB 또는 HTTP 직접 호출 |
 | Config | 환경변수와 기본값 중앙 관리 | `.env` 직접 수정, 코드 하드코딩 |
 
+### FastAPI 리소스와 의존성 조립
+
+FastAPI 운영 경로의 외부 리소스 lifecycle과 dependency wiring은
+[ADR-BP001 Decision 5](./adr/001-fastapi-module-design.md#decision-5-객체-생성과-리소스-lifecycle-책임을-분리한다)를 따른다.
+
+- FastAPI lifespan은 DB/OpenAI/HTTP client 같은 app-scoped 외부 리소스를 생성하고 `app.state`에 보관하고 종료 시 닫는다.
+- dependency provider는 `app.state`의 app-scoped 리소스를 꺼내 Repository, Service, Client wrapper에 주입한다.
+- 서비스/클라이언트 클래스는 외부 client를 내부 생성하지 않고 provider가 주입한 client를 사용한다.
+
 ---
 
 ## 2. 사용자 플로우별 설계
