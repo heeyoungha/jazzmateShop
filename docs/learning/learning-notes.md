@@ -3,7 +3,7 @@
 > 이 파일은 `/explain-python` 커맨드가 자동으로 읽고 업데이트합니다.
 > 새로 배운 개념은 아래에 추가됩니다.
 
-최종 업데이트: 2026-06-10
+최종 업데이트: 2026-06-11 (recommendation_service.py)
 
 ---
 
@@ -40,6 +40,14 @@
 - 실제 서버 포트를 열지 않고 FastAPI 앱에 HTTP 요청을 보낼 수 있는 테스트 도구.
 - 내부적으로 `httpx`를 사용해 ASGI 앱에 직접 요청을 전달한다.
 - ADR-BP003: 외부 네트워크 없이 HTTP 상태코드·응답 본문을 검증하는 원칙에 부합한다.
+- 파일: `backendPython/tests/conftest.py`
+
+### ASGI (Asynchronous Server Gateway Interface)
+- Python 웹 앱과 웹 서버 사이의 통신 규약(인터페이스).
+- WSGI(동기, Flask/Django)의 후속. 비동기를 지원해 여러 요청을 동시에 처리할 수 있다.
+- FastAPI가 `async def`로 동시 처리가 가능한 이유가 ASGI 기반이기 때문.
+- 운영: `브라우저 → uvicorn(웹 서버) → [ASGI] → FastAPI 앱`
+- TestClient: `테스트 코드 → httpx → [ASGI 직접 구현] → FastAPI 앱` — uvicorn 없이도 동작하는 이유.
 - 파일: `backendPython/tests/conftest.py`
 
 ### Fake 객체
@@ -147,16 +155,150 @@
 - `pytest.raises(ConfigurationError, match="키워드")`로 예외 타입과 메시지를 함께 검증한다.
 - 파일: `backendPython/app/core/exceptions.py`, `backendPython/tests/unit/test_dependencies.py`
 
+### 센티널 패턴 — `object()`로 고유한 "없음" 신호 만들기
+- `DEFAULT = object()` / `MISSING = object()` — 세상에 딱 하나뿐인 객체를 만들어 고유한 신호로 사용.
+- `None`은 "유효한 값"이 될 수 있어서 "값을 안 넘긴 것"과 "명시적으로 None을 넘긴 것"을 구분할 수 없을 때 씀.
+- `is` 비교로만 구분: `if x is DEFAULT:` → 인자를 안 넘긴 상태 / `if x is MISSING:` → 해당 속성을 아예 만들지 말 것.
+- Python 표준 라이브러리(`functools`, `inspect`)도 같은 패턴 사용.
+- 파일: `backendPython/tests/unit/test_dependencies.py`
+
+### `setattr(obj, name, value)` — 동적 속성 설정
+- `state.database = x`와 `setattr(state, "database", x)`는 동일.
+- 속성 이름이 문자열 변수일 때(반복문, parametrize 등) 직접 `.`으로 쓸 수 없으므로 `setattr` 사용.
+- `for name, value in items(): setattr(state, name, value)` — 반복문으로 여러 속성을 한 번에 설정.
+- 파일: `backendPython/tests/unit/test_dependencies.py`
+
+### `**{key: value}` 언패킹 — 동적 키워드 인자 전달
+- `make_request(**{"database": MISSING})` == `make_request(database=MISSING)`.
+- 인자 이름이 문자열 변수일 때 딕셔너리로 만들어 언패킹하면 동적으로 인자 이름을 지정할 수 있다.
+- `parametrize`에서 넘어온 문자열을 인자 이름으로 쓸 때 자주 등장하는 패턴.
+- 파일: `backendPython/tests/unit/test_dependencies.py`
+
+### `@pytest.mark.parametrize` — 같은 테스트를 여러 입력으로 반복
+- `@pytest.mark.parametrize("변수명", [값1, 값2, ...])` — pytest가 자동으로 각 값으로 테스트를 반복 실행.
+- 복붙 없이 같은 검증 로직을 여러 입력에 적용. 나중에 케이스 추가 시 리스트에 한 줄만 추가.
+- 테스트 ID가 `test_이름[값]` 형태로 자동 생성되어 어느 케이스가 실패했는지 명확히 보임.
+- 파일: `backendPython/tests/unit/test_dependencies.py`
+
 ### `SimpleNamespace` — 경량 가짜 객체
 - `from types import SimpleNamespace`로 임포트. 동적으로 속성을 붙일 수 있는 빈 객체.
-- `obj = SimpleNamespace(a=1, b=2)` → `obj.a == 1`
+- `obj = SimpleNamespace(a=1, b=2)` → `obj.a == 1` (키워드 인자 이름이 그대로 속성 이름이 됨)
 - Fake 클래스를 따로 선언하지 않고 단순한 구조체가 필요할 때 사용한다.
-- 예: `request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(database=db)))`
+- FastAPI `request.app.state.database` 같은 중첩 구조를 흉내 낼 때 사용:
+  - `state = SimpleNamespace(); setattr(state, "database", fake_db)`
+  - `app = SimpleNamespace(state=state)`
+  - `request = SimpleNamespace(app=app)` → `request.app.state.database == fake_db`
+- 실제 FastAPI `Request` 객체는 ASGI scope 딕셔너리 전체가 필요해 직접 생성이 오히려 복잡하다.
 - `type()` 동적 클래스 생성과 비슷하지만, 중첩 구조를 표현하기 더 자연스럽다.
 - 파일: `backendPython/tests/unit/test_dependencies.py`
+
+### `TestClient` vs `SimpleNamespace` — 테스트 방법 선택 기준
+- 전 세계 기준으로 `TestClient` + `dependency_overrides`가 압도적으로 많이 쓰임. FastAPI 공식 권장.
+- `SimpleNamespace`로 request를 흉내 내는 건 dependency provider 함수 자체를 단위 테스트할 때만 쓰는 패턴.
+
+| 방법 | 목적 | 언제 |
+|---|---|---|
+| `TestClient` | HTTP 흐름 전체 검증 | "HTTP 202가 잘 오는가?" |
+| `SimpleNamespace` | 특정 함수만 격리 검증 | "state에서 client를 잘 꺼내는가?" |
+
+- 이 프로젝트가 둘 다 쓰는 이유: ADR-BP003 Decision 2-1 — "운영 dependency graph 자체를 별도 테스트로 고정". `TestClient`만으로는 `None` 전달 시 `ConfigurationError` 케이스를 깔끔하게 검증하기 어렵다.
+- 파일: `backendPython/tests/unit/test_dependencies.py`, `backendPython/tests/integration/test_recommendation_flow.py`
 
 ### `getattr(obj, key, default)` — 안전한 속성 접근
 - `obj.key`는 속성이 없으면 `AttributeError`를 발생시킨다.
 - `getattr(obj, "key", None)`은 속성이 없으면 `None`을 반환한다.
 - 런타임에 속성 존재 여부가 불확실한 경우(예: `app.state.database` 미설정)에 사용한다.
 - 파일: `backendPython/app/api/dependencies.py`
+
+### `Optional[타입]` — None 허용 타입 힌트
+- `Optional[X]`는 "이 값은 `X`이거나 `None`이다"라는 선언. Python 3.10+에서는 `X | None`으로도 쓴다.
+- Python은 타입을 강제하지 않지만, IDE와 사람이 "None을 넘겨도 된다"는 의도를 읽을 수 있다.
+- 파일: `backendPython/app/services/recommendation_service.py`
+
+### `A or B` 패턴 — None이면 기본값 사용
+- `self.x = injected or Default()` — 주입된 값이 없으면(None) 기본 구현체를 만든다.
+- Python `or`는 왼쪽이 falsy(None, 0, 빈 문자열 등)이면 오른쪽을 반환한다.
+- **의존성 주입 + or 패턴**: 테스트에서는 fake를 주입하고, 운영에서는 None을 넘기면 기본값이 사용된다.
+- `or` 패턴을 쓰지 않고 `ConfigurationError`를 던지는 경우: 기본 구현체를 만들 수 없을 때 (DB client 필요 등).
+- 파일: `backendPython/app/services/recommendation_service.py`
+
+### `async def` / `await` — 비동기 함수
+- `async def`로 선언한 함수는 `await`해야 실제로 실행된다. 선언만으로는 아무것도 실행되지 않는다.
+- `await` 지점에서 Python이 "나 지금 기다리는 중"이라고 양보해 다른 작업이 실행될 수 있다.
+- 이전에 배운 `@pytest.mark.asyncio`가 필요한 이유: pytest가 `async def` 테스트를 대신 `await`해줘야 하기 때문.
+- `asyncio.gather(a(), b())`로 여러 await를 동시에 실행할 수 있다 — ADR-BP002 Decision 4: 추천 사유 병렬 생성.
+- 파일: `backendPython/app/services/recommendation_service.py`
+
+### `try / except` — 예외 처리
+- `try` 블록 안에서 예외 발생 시 `except`로 이동. 예외 없으면 `except` 건너뜀.
+- `except SpecificError:` — 해당 타입의 예외만 잡는다. 다른 예외는 그대로 전파된다.
+- `return`을 함께 쓰면 실패 처리 후 함수를 즉시 종료한다 (다음 단계 진행 방지).
+- 저번에 배운 예외 감싸기와 연결: `EmbeddingError`가 OpenAI 내부 예외를 감싸므로 서비스는 OpenAI를 직접 몰라도 됨.
+- 파일: `backendPython/app/services/recommendation_service.py`
+
+### `if not collection` — 빈 컬렉션 체크
+- Python에서 빈 리스트 `[]`, 빈 dict `{}`, `None`은 모두 **falsy**. `not []`는 `True`.
+- `if not candidates:` — 후보가 없으면 이 블록 실행.
+- 반대 예시: `if candidates is None:` — None만 체크하므로 빈 리스트 `[]`를 잡지 못한다.
+- ADR-BP002 Decision 7: 추천 후보 0건은 실패로 간주.
+- 파일: `backendPython/app/services/recommendation_service.py`
+
+### 딕셔너리 컴프리헨션
+- `{키: 값 for 변수 in 반복가능객체}` — 리스트 컴프리헨션의 딕셔너리 버전.
+- 리스트 컴프리헨션: `[값 for ...]` / 딕셔너리 컴프리헨션: `{키: 값 for ...}`
+- 용도: `album_id → 추천사유` 매핑을 만들어 O(1)로 빠르게 조회.
+- `.get(key, default)`: 키가 없으면 default 반환 — 사유 생성이 누락된 앨범에 빈 문자열 사용.
+- 파일: `backendPython/app/services/recommendation_service.py`
+
+### `_` 접두사 — private 관례
+- Python에는 진짜 private이 없다. `_`는 "클래스 내부에서만 쓰세요"라는 약속(관례).
+- 외부에서 `obj._method()`로 호출은 가능하지만, 내부 구현이라는 신호이므로 테스트에서 직접 호출하지 않는다.
+- public 메서드(`recommend_by_review`)의 결과만 검증하면 내부 구현이 바뀌어도 테스트가 깨지지 않는다.
+- 파일: `backendPython/app/services/recommendation_service.py`
+
+### `logging` — 운영 로그
+- `logger = logging.getLogger(__name__)` — 현재 모듈명으로 logger 생성. 어느 파일 로그인지 자동 표시.
+- `print()`와 달리 레벨(DEBUG/INFO/WARNING/ERROR), 시간, 모듈명과 함께 기록.
+- `logger.exception(msg, exc)` — ERROR 레벨 + 스택 트레이스까지 함께 기록.
+- ADR-BP002 Decision 7: Spring 콜백 전송 실패 시 로그만 기록, 자동 재시도 없음.
+- 파일: `backendPython/app/services/recommendation_service.py`
+
+### `monkeypatch.setattr` — 모듈 수준 함수 교체
+- 저번엔 클래스 메서드를 교체했지만, `monkeypatch.setattr(모듈객체, "함수명", 가짜함수)`로 모듈 안의 함수도 교체할 수 있다.
+- 용도: FastAPI lifespan에서 호출하는 팩토리 함수(`create_database_client` 등)를 가짜로 바꿔 실제 DB 연결을 막는다.
+- **클래스 메서드 교체 vs 모듈 함수 교체**:
+  - `monkeypatch.setattr(MyClass, "method", fake)` → 클래스 인스턴스 메서드 교체
+  - `monkeypatch.setattr(module, "function", fake)` → 모듈 최상위 함수 교체
+- 파일: `backendPython/tests/conftest.py`
+
+### `raising=False` — 없는 속성도 허용
+- `monkeypatch.setattr`의 기본값은 `raising=True`: 교체할 속성이 없으면 `AttributeError` 발생.
+- `raising=False`: 속성이 없어도 에러 없이 새로 추가한다.
+- 사용 시점: 모듈이 아직 해당 함수를 정의하지 않았거나, 이미 임포트된 모듈에서 이름이 없을 때.
+- 파일: `backendPython/tests/conftest.py`
+
+### `with TestClient(app)` — lifespan 실행
+- `TestClient(app)`을 `with` 블록으로 쓰면 FastAPI **lifespan**이 실행된다.
+- **lifespan**: 앱 시작(`startup`)과 종료(`shutdown`) 시 실행되는 코드 블록. DB 연결 생성/닫기가 여기 들어간다.
+- `with` 없이 쓰면 lifespan이 실행되지 않아 `app.state`에 리소스가 없는 상태로 테스트된다.
+- **순서가 중요**: monkeypatch로 팩토리 함수를 교체한 **뒤에** `with TestClient` 블록을 열어야 한다. 순서가 바뀌면 실제 DB 연결을 시도한다.
+- ADR-BP003 Decision 2-1: lifespan 테스트는 startup에서 리소스가 `app.state`에 등록되고 shutdown에서 닫히는지 검증한다.
+- 파일: `backendPython/tests/conftest.py`
+
+### Fake 객체 — close 인터페이스 맞추기 (보충)
+- `FakeDatabaseClient.close()` (동기) vs `FakeAsyncClient.aclose()` (비동기) — 실제 클라이언트와 메서드명을 맞춰야 한다.
+- FastAPI lifespan shutdown이 각 client의 close 메서드를 호출하므로, fake도 동일한 인터페이스를 갖춰야 `AttributeError` 없이 종료된다.
+- 파일: `backendPython/tests/conftest.py`, `backendPython/tests/unit/test_lifespan.py`
+
+### `assert x is y` — 동일 객체 검사
+- `==`는 값이 같은지, `is`는 메모리에서 완전히 같은 객체인지 검사한다.
+- lifespan 테스트에서 `assert client.app.state.database is fake_db`로 "lifespan이 monkeypatch로 심은 팩토리 함수를 실제로 호출해 그 반환값을 저장했는가"를 검증한다.
+- 만약 lifespan이 팩토리 함수를 무시하고 직접 객체를 생성하면 `is` 검증이 실패한다.
+- 파일: `backendPython/tests/unit/test_lifespan.py`
+
+### `@asynccontextmanager` — lifespan 작동 원리
+- `@asynccontextmanager`는 `async def` 함수를 `with` 블록에 쓸 수 있게 만드는 데코레이터.
+- `yield` 전 = startup, `yield` = 앱 실행 구간, `yield` 후 = shutdown.
+- `try / finally` + `yield` 조합: 테스트에서 예외가 발생해도 `finally`가 반드시 실행 → shutdown(close) 보장.
+- ADR-BP001 Decision 5: lifespan이 app-scoped 리소스 lifecycle을 담당한다.
+- 파일: `backendPython/app/main.py`, `backendPython/tests/unit/test_lifespan.py`

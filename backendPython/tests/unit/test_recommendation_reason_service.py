@@ -4,6 +4,7 @@ from types import SimpleNamespace
 import pytest
 
 from app.core.config import settings
+from app.core.exceptions import ConfigurationError
 from app.services.recommendation_reason_service import RecommendationReasonService
 
 from tests.fixtures import ALBUM_ID_1, ALBUM_ID_2, REVIEW_CONTENT, make_candidate
@@ -41,6 +42,12 @@ class FakeChatCompletions:
 class FakeOpenAiClient:
     def __init__(self, completions):
         self.chat = SimpleNamespace(completions=completions)
+
+
+def test_recommendation_reason_service_requires_open_ai_client():
+    """운영 조립 경로에서 OpenAI client 누락은 설정 오류로 실패한다."""
+    with pytest.raises(ConfigurationError, match="openai client"):
+        RecommendationReasonService(openai_client=None)
 
 
 @pytest.mark.asyncio

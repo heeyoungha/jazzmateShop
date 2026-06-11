@@ -5,7 +5,7 @@ import httpx
 import pytest
 
 from app.core.error_codes import RecommendationErrorCode
-from app.core.exceptions import CallbackError
+from app.core.exceptions import CallbackError, ConfigurationError
 from app.clients.spring_callback_client import SpringCallbackClient
 from app.schemas.recommendation import RecommendationCallbackItem
 
@@ -18,6 +18,15 @@ def make_item():
         recommendation_score=Decimal("0.9423"),
         recommendation_reason="차분한 모달 재즈 분위기가 잘 맞습니다.",
     )
+
+
+def test_spring_callback_client_requires_http_client():
+    """운영 조립 경로에서 HTTP client 누락은 설정 오류로 실패한다."""
+    with pytest.raises(ConfigurationError, match="http client"):
+        SpringCallbackClient(
+            base_url="https://spring.example.com",
+            http_client=None,
+        )
 
 
 @pytest.mark.asyncio

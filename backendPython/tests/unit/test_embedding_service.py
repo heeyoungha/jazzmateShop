@@ -3,7 +3,7 @@ from types import SimpleNamespace
 import pytest
 
 from app.core.config import settings
-from app.core.exceptions import EmbeddingError
+from app.core.exceptions import ConfigurationError, EmbeddingError
 from app.services.embedding_service import EmbeddingService
 
 from tests.fixtures import REVIEW_CONTENT
@@ -25,6 +25,12 @@ class FakeEmbeddings:
 class FakeOpenAiClient:
     def __init__(self, embeddings):
         self.embeddings = embeddings
+
+
+def test_embedding_service_requires_open_ai_client():
+    """운영 조립 경로에서 OpenAI client 누락은 설정 오류로 실패한다."""
+    with pytest.raises(ConfigurationError, match="openai client"):
+        EmbeddingService(openai_client=None)
 
 
 @pytest.mark.asyncio
