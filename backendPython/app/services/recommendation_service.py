@@ -92,6 +92,7 @@ class RecommendationService:
             )
         except Exception as exc:
             logger.exception("Spring callback failed: %s", exc)
+            raise
 
     def _build_callback_items(
         self, 
@@ -105,8 +106,11 @@ class RecommendationService:
         return [
             RecommendationCallbackItem(
                 album_id=candidate.album_id,
+                album_artist=candidate.artist_name or None,
+                album_title=candidate.album_title or None,
                 recommendation_score=normalize_score(candidate.similarity),
                 recommendation_reason=reason_by_album_id.get(candidate.album_id, ""),
+                critics_review_id=candidate.critics_review_id,
             )
             for candidate in candidates
         ]
@@ -120,3 +124,4 @@ class RecommendationService:
             )
         except Exception as exc:
             logger.exception("Spring callback failed: %s", exc)
+            raise

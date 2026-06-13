@@ -7,9 +7,10 @@ import org.hibernate.annotations.UpdateTimestamp;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 @Entity
-@Table(name = "recommend_track")
+@Table(name = "recommend_album")
 @Getter
 @Builder
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
@@ -26,7 +27,16 @@ public class RecommendAlbum {
     private Integer userReviewId;
 
     @Column(name = "album_id", nullable = false)
-    private String albumId;
+    private UUID albumId;
+
+    @Column(name = "critics_review_id", nullable = false)
+    private UUID criticsReviewId;
+
+    @Column(name = "album_artist")
+    private String albumArtist;
+
+    @Column(name = "album_title")
+    private String albumTitle;
 
     @Column(name = "recommendation_score", precision = 5, scale = 4, nullable = false)
     private BigDecimal recommendationScore;

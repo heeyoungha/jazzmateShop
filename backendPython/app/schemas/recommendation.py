@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from decimal import Decimal, ROUND_HALF_UP
 from enum import Enum
-from typing import Annotated, Any, Iterable, List, Optional
+from typing import Annotated, Any, Iterable, List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
@@ -20,14 +20,17 @@ class RecommendationCallbackItem(BaseModel):
     model_config = ConfigDict(populate_by_name=True, use_enum_values=False)
 
     album_id: str = Field(alias="albumId")
+    album_artist: Optional[str] = Field(default=None, alias="albumArtist")
+    album_title: Optional[str] = Field(default=None, alias="albumTitle")
     recommendation_score: Decimal = Field(alias="recommendationScore")
     recommendation_reason: str = Field(alias="recommendationReason")
+    critics_review_id: str = Field(alias="criticsReviewId")
 
 
 class RecommendationCallbackRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True, use_enum_values=False)
 
-    status: str
+    status: Literal["COMPLETED", "FAILED"]
     recommendations: List[RecommendationCallbackItem]
     error_code: Optional[RecommendationErrorCode] = Field(default=None, alias="errorCode")
     message: Optional[str] = None
@@ -58,7 +61,7 @@ class AlbumCandidate:
     artist_name: str = ""
     review_summary: str = ""
     review_content: str = ""
-    review_url: str = ""
+    critics_review_id: str = ""
 
     @classmethod
     def from_row(cls, row: dict[str, Any]) -> "AlbumCandidate":
@@ -69,7 +72,7 @@ class AlbumCandidate:
             artist_name=str(row.get("artist_name") or row.get("album_artist", "")),
             review_summary=str(row.get("review_summary", "")),
             review_content=str(row.get("review_content", "")),
-            review_url=str(row.get("review_url") or row.get("url", "")),
+            critics_review_id=str(row.get("critics_review_id", "")),
         )
 
 

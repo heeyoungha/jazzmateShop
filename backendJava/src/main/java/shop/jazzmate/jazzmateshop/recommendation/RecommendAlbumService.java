@@ -5,13 +5,14 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import shop.jazzmate.jazzmateshop.common.exception.ResourceNotFoundException;
-import shop.jazzmate.jazzmateshop.recommendation.dto.RecommendAlbumBatchRequest;
+import shop.jazzmate.jazzmateshop.recommendation.dto.RecommendAlbumCallbackRequest;
 import shop.jazzmate.jazzmateshop.userReview.UserReviewRepository;
 import shop.jazzmate.jazzmateshop.userReview.entity.RecommendationStatus;
 import shop.jazzmate.jazzmateshop.userReview.entity.UserReview;
 import shop.jazzmate.jazzmateshop.recommendation.entity.RecommendAlbum;
 
 import java.util.List;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -24,7 +25,7 @@ public class RecommendAlbumService {
     // POST /api/user-reviews/{reviewId}/recommendations — FastAPI 콜백
     // albumId = v_embedding_with_album.album_id (= embedding_vectors.id)
     @Transactional
-    public void createRecommendAlbums(Integer reviewId, RecommendAlbumBatchRequest request) {
+    public void createRecommendAlbums(Integer reviewId, RecommendAlbumCallbackRequest request) {
         UserReview review = userReviewRepository.findById(reviewId)
                 .orElseThrow(() -> new ResourceNotFoundException("UserReview not found: " + reviewId));
 
@@ -47,7 +48,10 @@ public class RecommendAlbumService {
         List<RecommendAlbum> albums = request.getRecommendations().stream()
                 .map(item -> RecommendAlbum.builder()
                         .userReviewId(reviewId)
-                        .albumId(item.getAlbumId())
+                        .albumId(UUID.fromString(item.getAlbumId()))
+                        .criticsReviewId(item.getCriticsReviewId())
+                        .albumArtist(item.getAlbumArtist())
+                        .albumTitle(item.getAlbumTitle())
                         .recommendationScore(item.getRecommendationScore())
                         .recommendationReason(item.getRecommendationReason())
                         .build())

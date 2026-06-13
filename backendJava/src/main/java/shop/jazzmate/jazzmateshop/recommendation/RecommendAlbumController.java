@@ -2,7 +2,7 @@ package shop.jazzmate.jazzmateshop.recommendation;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
-import shop.jazzmate.jazzmateshop.recommendation.dto.RecommendAlbumBatchRequest;
+import shop.jazzmate.jazzmateshop.recommendation.dto.RecommendAlbumCallbackRequest;
 
 @RestController
 @RequestMapping("/api/user-reviews")
@@ -14,7 +14,7 @@ public class RecommendAlbumController {
     @PostMapping("/{reviewId}/recommendations")
     public void createRecommendations(
             @PathVariable Integer reviewId,
-            @RequestBody RecommendAlbumBatchRequest request) {
+            @RequestBody RecommendAlbumCallbackRequest request) {
         recommendAlbumService.createRecommendAlbums(reviewId, request);
     }
 }
