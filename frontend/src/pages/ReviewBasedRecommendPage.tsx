@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
+import { ChevronLeft, Music, User, FileText, Loader2 } from "lucide-react";
 import { RecommendationCard } from "../components/RecommendationCard";
 import { RetryButton } from "../components/RetryButton";
 import { getRecommendationPollingInterval as getPollingDelay } from "../config/polling";
@@ -14,7 +15,10 @@ interface ReviewDetail {
 interface Recommendation {
   id: number;
   userReviewId: number;
-  albumId: number;
+  trackId: number;
+  trackTitle: string;
+  artistName: string;
+  recommendationScore: number;
   recommendationReason: string;
 }
 
@@ -32,6 +36,7 @@ type PageState =
 
 export function ReviewBasedRecommendPage() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const [state, setState] = useState<PageState>({ status: "loading" });
   const startedAt = useRef(Date.now());
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -145,46 +150,141 @@ export function ReviewBasedRecommendPage() {
     startPolling(signal);
   }
 
-  if (state.status === "loading") return null;
+  const header = (
+    <div className="bg-white shadow-sm border-b">
+      <div className="max-w-3xl mx-auto px-4 py-5">
+        <button
+          type="button"
+          onClick={() => navigate(-1)}
+          className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-800 transition-colors"
+        >
+          <ChevronLeft className="w-4 h-4" />내 감상문 목록
+        </button>
+      </div>
+    </div>
+  );
+
+  if (state.status === "loading") {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        {header}
+        <div className="flex justify-center py-16">
+          <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+        </div>
+      </div>
+    );
+  }
 
   if (state.status === "notFound") {
-    return <p>감상문을 찾을 수 없습니다.</p>;
+    return (
+      <div className="min-h-screen bg-gray-50">
+        {header}
+        <div className="flex justify-center py-16">
+          <p className="text-gray-500">감상문을 찾을 수 없습니다.</p>
+        </div>
+      </div>
+    );
   }
 
   if (state.status === "error") {
-    return <p>{state.message}</p>;
+    return (
+      <div className="min-h-screen bg-gray-50">
+        {header}
+        <div className="flex justify-center py-16">
+          <p className="text-gray-500">{state.message}</p>
+        </div>
+      </div>
+    );
   }
 
   const { data } = state;
 
   if (data.recommendationStatus === "PENDING") {
-    return <p>추천을 준비하고 있습니다.</p>;
+    return (
+      <div className="min-h-screen bg-gray-50">
+        {header}
+        <div className="max-w-3xl mx-auto px-4 py-12 flex flex-col items-center gap-4 text-center">
+          <Loader2 className="w-10 h-10 animate-spin text-blue-500" />
+          <p className="text-lg font-medium text-gray-700">
+            AI가 추천을 준비하고 있습니다...
+          </p>
+          <p className="text-sm text-gray-400">
+            감상문을 분석해 어울리는 앨범을 찾고 있어요. 잠시만 기다려주세요.
+          </p>
+        </div>
+      </div>
+    );
   }
 
   if (data.recommendationStatus === "FAILED") {
     return (
-      <div>
-        <p>추천 생성에 실패했습니다.</p>
-        {state.retryError && <p>{state.retryError}</p>}
-        <RetryButton onRetry={handleRetry} />
+      <div className="min-h-screen bg-gray-50">
+        {header}
+        <div className="max-w-3xl mx-auto px-4 py-12 flex flex-col items-center gap-4 text-center">
+          <div className="w-14 h-14 rounded-full bg-red-50 flex items-center justify-center">
+            <span className="text-2xl">😢</span>
+          </div>
+          <p className="text-lg font-medium text-gray-700">
+            추천 생성에 실패했습니다.
+          </p>
+          {state.retryError && (
+            <p className="text-sm text-red-500">{state.retryError}</p>
+          )}
+          <RetryButton onRetry={handleRetry} />
+        </div>
       </div>
     );
   }
 
   return (
-    <div>
-      <div>
-        <p>{data.review.trackName}</p>
-        <p>{data.review.artistName}</p>
-        <p>{data.review.reviewContent}</p>
+    <div className="min-h-screen bg-gray-50">
+      {header}
+      <div className="max-w-3xl mx-auto px-4 py-8 space-y-6">
+        {/* 내 감상문 */}
+        <div className="bg-white rounded-xl border shadow-sm p-6 space-y-3">
+          <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-widest">
+            내 감상문
+          </h2>
+          <div className="flex items-center gap-4 text-sm text-gray-700">
+            <span className="flex items-center gap-1.5 font-semibold">
+              <Music className="w-4 h-4 text-gray-400" />
+              {data.review.trackName}
+            </span>
+            <span className="flex items-center gap-1.5 text-gray-500">
+              <User className="w-4 h-4 text-gray-400" />
+              {data.review.artistName}
+            </span>
+          </div>
+          <div className="flex gap-2">
+            <FileText className="w-4 h-4 text-gray-300 shrink-0 mt-0.5" />
+            <p className="text-sm text-gray-600 leading-relaxed">
+              {data.review.reviewContent}
+            </p>
+          </div>
+        </div>
+
+        {/* 추천 결과 */}
+        <div className="space-y-3">
+          <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-widest px-1">
+            AI 추천 앨범{" "}
+            {data.recommendations.length > 0 &&
+              `(${data.recommendations.length})`}
+          </h2>
+          {data.recommendations.length === 0 ? (
+            <p className="text-center text-sm text-gray-400 py-12">
+              추천 결과가 없습니다.
+            </p>
+          ) : (
+            <ul className="space-y-3">
+              {data.recommendations.map((rec, i) => (
+                <li key={rec.id}>
+                  <RecommendationCard recommendation={rec} index={i} />
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       </div>
-      <ul>
-        {data.recommendations.map((rec) => (
-          <li key={rec.id}>
-            <RecommendationCard recommendation={rec} />
-          </li>
-        ))}
-      </ul>
     </div>
   );
 }

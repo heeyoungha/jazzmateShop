@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
+import { ChevronLeft } from "lucide-react";
 import { CriticsReviewDetail } from "../components/CriticsReviewDetail";
 
 interface CriticsDetail {
@@ -20,6 +21,7 @@ type PageState =
 
 export function CriticsReviewDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const [state, setState] = useState<PageState>({ status: "loading" });
 
   useEffect(() => {
@@ -70,15 +72,62 @@ export function CriticsReviewDetailPage() {
     };
   }, [id]);
 
+  const header = (
+    <div className="bg-white shadow-sm border-b">
+      <div className="max-w-3xl mx-auto px-4 py-5">
+        <button
+          type="button"
+          onClick={() => navigate(-1)}
+          className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-800 transition-colors"
+        >
+          <ChevronLeft className="w-4 h-4" />
+          전문가 리뷰 목록
+        </button>
+      </div>
+    </div>
+  );
+
+  if (state.status === "loading") {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        {header}
+        <div className="flex justify-center py-16">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500" />
+        </div>
+      </div>
+    );
+  }
+
   if (state.status === "notFound") {
-    return <p>찾을 수 없는 페이지입니다.</p>;
+    return (
+      <div className="min-h-screen bg-gray-50">
+        {header}
+        <div className="flex justify-center py-16">
+          <p className="text-gray-500">찾을 수 없는 페이지입니다.</p>
+        </div>
+      </div>
+    );
   }
 
   if (state.status === "error") {
-    return <p>{state.message}</p>;
+    return (
+      <div className="min-h-screen bg-gray-50">
+        {header}
+        <div className="flex justify-center py-16">
+          <p className="text-gray-500">{state.message}</p>
+        </div>
+      </div>
+    );
   }
 
-  if (state.status === "loading") return null;
-
-  return <CriticsReviewDetail review={state.data} />;
+  return (
+    <div className="min-h-screen bg-gray-50">
+      {header}
+      <div className="max-w-3xl mx-auto px-4 py-8">
+        <div className="bg-white rounded-xl border p-8 shadow-sm">
+          <CriticsReviewDetail review={state.data} />
+        </div>
+      </div>
+    </div>
+  );
 }
