@@ -280,6 +280,104 @@ FastAPI의 dependency provider와 lifespan을 사용하면 endpoint 테스트에
 
 ---
 
+## Decision 6: HTTP 경계 DTO는 Pydantic Schema가 관리한다
+
+FastAPI HTTP 경계에서 들어오고 나가는 데이터 구조는 `app/schemas`의 Pydantic 모델로 관리한다.
+이는 FastAPI 공식 문서의 request body model, response model 사용 방식 중 이 프로젝트에 필요한 부분만 적용한 규칙이다.
+
+### Rules
+
+- HTTP request body는 Pydantic 모델로 선언해 FastAPI가 파싱, 타입 변환, 필수값 검증을 자동 수행하게 한다.
+- HTTP response body 또는 외부 시스템으로 보내는 JSON payload도 Pydantic 모델로 관리한다.
+- Python 내부 필드명은 `snake_case`를 기본으로 사용한다.
+- 외부 API 계약에 `camelCase`가 필요하면 Pydantic `Field(alias=...)`를 사용한다.
+- Python 필드명으로 모델을 만들고 alias로 직렬화해야 하면 `ConfigDict(populate_by_name=True)`를 함께 사용한다.
+- alias가 적용된 JSON을 전송할 때는 `model_dump(by_alias=True, mode="json")`를 사용한다.
+- 단순 검증은 커스텀 validator보다 Pydantic 제약 타입을 우선 사용한다.
+- Pydantic 제약으로 표현하기 어려운 규칙만 `field_validator` 또는 `model_validator`로 작성한다.
+
+### Validation Policy
+
+필수값, 타입, 값 범위, 문자열 길이, 공백 제거 같은 단순 검증은 모델 선언부에서 표현한다.
+이렇게 하면 필드 선언만 보고 HTTP 계약을 파악할 수 있고, FastAPI가 OpenAPI schema에도 같은 계약을 반영한다.
+
+```python
+from typing import Annotated
+
+from pydantic import BaseModel, Field, StringConstraints
+
+
+class RequestDto(BaseModel):
+    id: Annotated[int, Field(gt=0)]
+    content: Annotated[
+        str,
+        StringConstraints(strip_whitespace=True, min_length=1),
+    ]
+```
+
+이 정책에 따라 단순 공백 검증은 커스텀 `field_validator` 대신 `StringConstraints(strip_whitespace=True, min_length=1)`로 표현한다.
+동작은 다음과 같다.
+
+- 숫자 ID는 `Field(gt=0)`처럼 범위 제약으로 검증한다.
+- 문자열 본문은 앞뒤 공백을 제거한 뒤 최소 1글자 이상이어야 한다.
+- `"  text  "`는 `"text"`로 정제되어 서비스 계층에 전달된다.
+- `"   "`는 HTTP request body 검증 단계에서 실패한다.
+
+커스텀 `field_validator`는 다음 경우에만 사용한다.
+
+- 여러 필드의 조합을 함께 검증해야 하는 경우
+- Pydantic 기본 제약으로 표현하기 어려운 도메인 규칙이 있는 경우
+- 외부 계약상 별도 에러 메시지나 정규화 로직이 필요한 경우
+- 같은 정규화 함수를 여러 필드에 재사용해야 하는 경우
+
+### Serialization Policy
+
+HTTP 응답 또는 외부 시스템으로 보내는 JSON payload도 Pydantic 모델을 먼저 만들고, 전송 직전에 dict로 변환한다.
+외부 API가 `camelCase`를 요구하면 모델 필드는 `snake_case`로 유지하고 alias만 둔다.
+
+```python
+from pydantic import BaseModel, ConfigDict, Field
+
+
+class ResponseDto(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    item_id: str = Field(alias="itemId")
+
+
+payload = ResponseDto(item_id="album-1").model_dump(
+    by_alias=True,
+    mode="json",
+)
+```
+
+이 방식으로 Python 내부 명명 규칙과 외부 API JSON 필드명을 분리한다.
+`Decimal`, `Enum` 등 JSON 변환이 필요한 값이 포함될 수 있으므로 HTTP 전송용 dict를 만들 때는 `mode="json"`을 명시한다.
+
+### Rationale
+
+HTTP request body 검증을 Router나 Service에서 직접 수행하면 FastAPI가 제공하는 자동 검증과 OpenAPI schema 생성 이점을 잃는다.
+반대로 모든 검증을 커스텀 validator로 작성하면 단순한 필수값/범위/공백 검증도 imperative 코드로 흩어지고, 필드 선언만 보고 계약을 파악하기 어렵다.
+
+Pydantic 모델 선언부에 타입과 제약을 함께 두면 다음 이점이 있다.
+
+- Router는 검증된 DTO를 받아 background task 등록에 집중한다.
+- Service는 빈 문자열, 0 이하 ID 같은 HTTP 입력 오류를 다시 방어하지 않아도 된다.
+- DTO 테스트는 필수값, 타입, 값 범위, trim/blank 동작만 고정하면 된다.
+- OpenAPI 문서와 런타임 검증이 같은 모델에서 나온다.
+- callback JSON 직렬화 규칙이 `model_dump(by_alias=True, mode="json")`로 고정되어 Spring 계약과 Python 내부 명명 규칙을 분리할 수 있다.
+
+### Alternatives
+
+| 옵션 | 채택 여부 | 이유 |
+|---|---|---|
+| Router 함수에서 직접 dict 검증 | 기각 | FastAPI 자동 검증과 schema 문서화 이점을 잃고 Router 책임이 커진다. |
+| Service 진입점에서 입력 검증 | 기각 | HTTP 계약 검증이 유스케이스 계층으로 새고, 서비스 테스트가 입력 DTO 세부사항에 묶인다. |
+| 모든 필드 검증을 `field_validator`로 작성 | 부분 기각 | 복잡한 도메인 검증에는 유용하지만 단순 제약에는 코드가 장황해진다. |
+| Pydantic 제약 타입과 alias 직렬화를 사용 | 채택 | request/response 계약을 선언적으로 관리하고 HTTP 경계 처리를 한 곳에 모을 수 있다. |
+
+---
+
 ## Consequences
 
 - Router 테스트는 HTTP 계약과 background task 등록에 집중한다.
@@ -290,3 +388,4 @@ FastAPI의 dependency provider와 lifespan을 사용하면 endpoint 테스트에
 - 레이어가 분리되는 만큼 작은 클래스와 파일이 늘어나지만, 외부 의존성 mock 테스트 비용은 줄어든다.
 - Router와 Service는 dependency provider를 통해 협력 객체를 받으므로, HTTP 경계와 서비스 조립/lifecycle 관리가 분리된다.
 - 운영 DB client wiring이 누락되면 요청 처리 중 AttributeError가 아니라 설정 오류로 조기에 실패한다.
+- Pydantic Schema가 HTTP request/callback payload 계약을 소유하므로 DTO 변경 시 schema 테스트와 Spring callback JSON 테스트를 함께 갱신해야 한다.

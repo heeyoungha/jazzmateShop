@@ -3,7 +3,7 @@
 > 이 파일은 `/explain-python` 커맨드가 자동으로 읽고 업데이트합니다.
 > 새로 배운 개념은 아래에 추가됩니다.
 
-최종 업데이트: 2026-06-11 (recommendation_service.py)
+최종 업데이트: 2026-06-12 (embedding_service.py)
 
 ---
 
@@ -56,7 +56,7 @@
 - ADR-BP003 Decision 5: 외부 의존성 fake는 테스트 파일 안에 작게 둔다.
 - 파일: `backendPython/tests/unit/test_album_embedding_repository.py`
 
-> 참고: 
+> 참고:
 > - 인자: 함수 호출에 넘기는 값
 > - 파라미터(매개변수) : 함수 정의에 설정된 변수명
 
@@ -124,6 +124,16 @@
 - 성공/실패처럼 상태에 따라 필드 조합이 달라질 때 실수를 방지한다.
 - 예: `RecommendationCallbackRequest.completed([item])` / `.failed(error_code=..., message=...)`
 - 파일: `backendPython/tests/unit/test_recommendation_schema.py`
+
+### `@classmethod` — cls와 self의 차이
+- 일반 메서드의 첫 인자 `self`는 이미 만들어진 인스턴스. `@classmethod`의 첫 인자 `cls`는 클래스 자체.
+- 팩토리 메서드에서 `cls`를 쓰는 이유: 인스턴스를 **만들기 위해** 호출하는 메서드이므로 아직 `self`가 없다.
+- `cls(...)`는 `ClassName(...)`과 동일 — 클래스로 새 인스턴스를 생성한다.
+- 전방 참조(forward reference): 반환 타입을 `-> "ClassName"` 처럼 문자열로 쓰는 이유는, 메서드 정의 시점에 클래스가 아직 완전히 정의되지 않았기 때문.
+- 역할 구분:
+  - `completed` / `failed`: 상태 조합 팩토리 — 올바른 필드 조합 강제
+  - `from_row`: 변환 팩토리 — 외부 데이터(DB row) → 도메인 객체 변환을 한 곳에 집중
+- 파일: `backendPython/app/schemas/recommendation.py`
 
 ### fixture vs 일반 import 선택 기준
 - **생성/정리가 필요한 자원** (DB 연결, HTTP 클라이언트, 임시 파일) → `conftest.py` fixture
@@ -302,3 +312,21 @@
 - `try / finally` + `yield` 조합: 테스트에서 예외가 발생해도 `finally`가 반드시 실행 → shutdown(close) 보장.
 - ADR-BP001 Decision 5: lifespan이 app-scoped 리소스 lifecycle을 담당한다.
 - 파일: `backendPython/app/main.py`, `backendPython/tests/unit/test_lifespan.py`
+
+### Guard Clause — 생성자의 None 체크
+- 메서드/생성자 시작부에 "이 조건이 없으면 진행 불가"를 명시적으로 선언하는 패턴.
+- None을 저장하면 나중에 `AttributeError: 'NoneType' object has no attribute 'embeddings'`가 터지는데, 원인을 알기 어렵다.
+- Guard Clause로 생성 즉시 명확한 예외를 발생시키면 "설정 누락"이라는 의도가 전달됨.
+- ADR-BP003 Decision 2-1: "설정 누락 예외를 발생시킨다"는 테스트 기준이 이 패턴을 요구함.
+- 파일: `backendPython/app/services/embedding_service.py`
+
+### `typing.Any` — 타입 힌트에서 모든 타입 허용
+- `Any`는 "어떤 타입이든 허용"을 의미. 테스트 Fake 주입 등 타입을 고정하기 어려운 경우에 사용.
+- `from typing import List`: Python 3.9 이전에는 내장 `list`를 타입 힌트로 쓸 수 없어 필요했음.
+- 파일: `backendPython/app/services/embedding_service.py`
+
+### 예외 변환 + `raise ... from exc`
+- SDK 예외를 그대로 올리면 상위 레이어가 외부 SDK에 결합됨. SDK 교체 시 상위도 수정해야 하는 문제 발생.
+- 도메인 예외(`EmbeddingError`)로 감싸면 상위 레이어는 SDK를 직접 몰라도 됨.
+- `from exc`: traceback에 원인 예외를 "The above exception was the direct cause"로 표시해 디버깅 정보 보존.
+- 파일: `backendPython/app/services/embedding_service.py`

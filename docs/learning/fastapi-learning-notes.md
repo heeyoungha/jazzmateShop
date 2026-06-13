@@ -3,7 +3,7 @@
 > pytest 학습 노트(`learning-notes.md`)와 별도로, FastAPI 프레임워크 개념을 정리한 문서입니다.
 > `/explain-python` 커맨드가 자동으로 읽고 업데이트합니다.
 
-최종 업데이트: 2026-06-10 (SimpleNamespace, ConfigurationError, getattr 안전 접근 추가)
+최종 업데이트: 2026-06-12 (Pydantic model_dump, model_to_alias_dict 추가)
 
 ---
 
@@ -475,6 +475,104 @@ with pytest.raises(ConfigurationError, match="app.state.database"):
 ```
 
 `ConfigurationError`가 여러 곳에서 발생할 수 있을 때, `match`로 **어떤 설정이 누락됐는지**까지 고정할 수 있다.
+
+---
+
+### Pydantic — 타입을 강제하는 데이터 모델
+
+Python은 기본적으로 타입을 강제하지 않는다.
+
+```python
+# 그냥 dict
+data = {"album_id": "kind-of-blue", "score": "not a number"}
+# 잘못된 타입인지 아무도 몰라
+```
+
+Pydantic은 클래스로 데이터 구조를 정의하고, 타입을 강제한다.
+
+```python
+from pydantic import BaseModel
+
+class Item(BaseModel):
+    album_id: str
+    score: float
+
+item = Item(album_id="kind-of-blue", score=0.95)
+Item(album_id="kind-of-blue", score="wrong")  # ← ValidationError 발생
+```
+
+Pydantic 객체는 dict가 아니다. 속성으로 접근한다.
+
+```python
+item["album_id"]  # ← TypeError! dict처럼 못 씀
+item.album_id     # ← 이렇게 써야 함
+```
+
+---
+
+### `model_dump()` — Pydantic 객체 → dict 변환
+
+`httpx`의 `json=` 파라미터는 dict를 요구한다. Pydantic 객체를 그대로 넘길 수 없어서 변환이 필요하다.
+
+```python
+item = Item(album_id="kind-of-blue", score=0.95)
+
+item.model_dump()
+# {"album_id": "kind-of-blue", "score": 0.95}  ← dict
+```
+
+**옵션별 차이**
+
+```python
+item.model_dump()
+# {"album_id": ..., "score": Decimal("0.95")}
+# Python 내부 이름 (snake_case), 값 타입 그대로
+
+item.model_dump(by_alias=True)
+# {"albumId": ..., "score": Decimal("0.95")}
+# alias(camelCase)로 키 변환, 값 타입은 그대로
+
+item.model_dump(by_alias=True, mode="json")
+# {"albumId": ..., "score": 0.95}
+# alias로 키 변환 + Decimal→float, Enum→.value 등 JSON 직렬화 가능 타입으로 자동 변환
+```
+
+**alias가 왜 있나?**
+
+Spring은 camelCase JSON을 기대하고, Python은 snake_case를 쓴다.
+
+```python
+class RecommendationCallbackItem(BaseModel):
+    album_id: str = Field(alias="albumId")
+    #  ↑ Python에서 쓰는 이름    ↑ JSON에서 쓰는 이름
+```
+
+**전체 흐름**
+
+```
+Pydantic 객체 (item.album_id로 접근)
+    ↓ model_dump()
+dict (Python 이름, Python 타입)        {"album_id": Decimal("0.95")}
+    ↓ by_alias=True
+dict (JSON 이름, Python 타입)          {"albumId": Decimal("0.95")}
+    ↓ mode="json"
+dict (JSON 이름, JSON 타입)            {"albumId": 0.95}
+    ↓
+httpx json= 에 전달 → Spring으로 전송
+```
+
+**Pydantic v1/v2 호환 코드**
+
+`model_dump()`는 Pydantic v2 메서드다. v1에서는 `model.dict()`를 썼다.
+v1/v2 동시 지원이 필요할 때 `hasattr`로 버전을 감지하는 패턴이 쓰인다:
+
+```python
+if hasattr(model, "model_dump"):   # v2
+    return model.model_dump(by_alias=True)
+return model.dict(by_alias=True)   # v1 fallback
+```
+
+신규 프로젝트(v2 전용)에서는 `model.model_dump(by_alias=True, mode="json")` 한 줄로 끝낸다.
 
 ---
 
