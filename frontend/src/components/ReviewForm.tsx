@@ -250,6 +250,7 @@ export function ReviewForm({ onSubmit, submitting, error }: ReviewFormProps) {
           id="isPublic"
           name="isPublic"
           type="checkbox"
+          defaultChecked
           className="w-4 h-4 rounded border-gray-300 accent-gray-900"
         />
         <span className="text-sm text-gray-700">감상문 공개</span>

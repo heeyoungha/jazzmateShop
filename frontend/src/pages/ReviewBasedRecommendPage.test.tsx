@@ -39,7 +39,7 @@ describe("ReviewBasedRecommendPage", () => {
   it("마운트 시 리뷰 상세를 조회한다", async () => {
     renderRecommendPage();
 
-    await screen.findByText(new RegExp(String(recommendation.albumId)));
+    await screen.findByText(recommendation.albumTitle);
 
     expect(requestLog.reviewDetail).toBe(1);
   });
@@ -51,7 +51,7 @@ describe("ReviewBasedRecommendPage", () => {
 
     await advanceTimers(0);
 
-    expect(screen.getByText("추천을 준비하고 있습니다.")).toBeInTheDocument();
+    expect(screen.getByText(/추천을 준비하고 있습니다/)).toBeInTheDocument();
 
     await advanceTimers(RECOMMENDATION_POLLING_INTERVAL_MS);
 
@@ -65,18 +65,17 @@ describe("ReviewBasedRecommendPage", () => {
 
     await advanceTimers(0);
 
-    expect(screen.getByText("추천을 준비하고 있습니다.")).toBeInTheDocument();
+    expect(screen.getByText(/추천을 준비하고 있습니다/)).toBeInTheDocument();
 
     await advanceTimers(RECOMMENDATION_POLLING_INTERVAL_MS);
 
     // 기준 감상문
     expect(screen.getByText(review.trackName)).toBeInTheDocument();
-    expect(screen.getByText(review.artistName)).toBeInTheDocument();
+    expect(screen.getAllByText(review.artistName)).not.toHaveLength(0);
     expect(screen.getByText(review.reviewContent)).toBeInTheDocument();
     // 추천 곡 목록
-    expect(
-      screen.getByText(new RegExp(String(recommendation.albumId))),
-    ).toBeInTheDocument();
+    expect(screen.getByText(recommendation.albumTitle)).toBeInTheDocument();
+    expect(screen.getAllByText(recommendation.albumArtist)).not.toHaveLength(0);
     expect(
       screen.getByText(recommendation.recommendationReason),
     ).toBeInTheDocument();
@@ -161,7 +160,7 @@ describe("ReviewBasedRecommendPage", () => {
 
     expect(requestLog.retry).toBe(1);
     await advanceTimers(0);
-    expect(screen.getByText("추천을 준비하고 있습니다.")).toBeInTheDocument();
+    expect(screen.getByText(/추천을 준비하고 있습니다/)).toBeInTheDocument();
   });
 
   it("retry 요청 실패 시 failed 화면에 머물고 오류 메시지를 표시한다", async () => {
@@ -201,7 +200,7 @@ describe("ReviewBasedRecommendPage", () => {
     const { unmount } = renderRecommendPage();
 
     await advanceTimers(0);
-    screen.getByText("추천을 준비하고 있습니다.");
+    screen.getByText(/추천을 준비하고 있습니다/);
     unmount();
 
     await advanceTimers(RECOMMENDATION_POLLING_INTERVAL_MS);

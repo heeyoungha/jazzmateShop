@@ -15,9 +15,11 @@ interface ReviewDetail {
 interface Recommendation {
   id: number;
   userReviewId: number;
-  trackId: number;
-  trackTitle: string;
-  artistName: string;
+  albumId: string;
+  albumTitle?: string | null;
+  albumArtist?: string | null;
+  criticsReviewId: string | null;
+  criticsReviewUrl: string | null;
   recommendationScore: number;
   recommendationReason: string;
 }
