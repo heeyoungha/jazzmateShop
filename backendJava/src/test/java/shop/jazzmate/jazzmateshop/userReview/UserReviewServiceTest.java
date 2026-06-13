@@ -11,7 +11,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.PageImpl;
-import org.springframework.data.domain.Pageable;
+import shop.jazzmate.jazzmateshop.criticsReview.CriticsReviewRepository;
 import shop.jazzmate.jazzmateshop.common.exception.ResourceNotFoundException;
 import shop.jazzmate.jazzmateshop.recommendation.RecommendAlbumRepository;
 import shop.jazzmate.jazzmateshop.recommendation.event.RecommendationRequestEvent;
@@ -53,6 +53,9 @@ class UserReviewServiceTest {
 
     @Mock
     RecommendAlbumRepository recommendAlbumRepository;
+
+    @Mock
+    CriticsReviewRepository criticsReviewRepository;
 
     @Mock
     ApplicationEventPublisher eventPublisher;

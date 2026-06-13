@@ -11,7 +11,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import shop.jazzmate.jazzmateshop.common.exception.GlobalExceptionHandler;
-import shop.jazzmate.jazzmateshop.recommendation.dto.RecommendAlbumBatchRequest;
+import shop.jazzmate.jazzmateshop.recommendation.dto.RecommendAlbumCallbackRequest;
 
 import java.util.Map;
 
@@ -53,7 +53,7 @@ class RecommendAlbumControllerTest {
                     .andExpect(status().isOk())
                     .andExpect(content().string(""));
 
-            verify(recommendAlbumService).createRecommendAlbums(eq(REVIEW_ID), any(RecommendAlbumBatchRequest.class));
+            verify(recommendAlbumService).createRecommendAlbums(eq(REVIEW_ID), any(RecommendAlbumCallbackRequest.class));
         }
 
         @Test
@@ -70,7 +70,7 @@ class RecommendAlbumControllerTest {
                     .andExpect(status().isOk())
                     .andExpect(content().string(""));
 
-            verify(recommendAlbumService).createRecommendAlbums(eq(REVIEW_ID), any(RecommendAlbumBatchRequest.class));
+            verify(recommendAlbumService).createRecommendAlbums(eq(REVIEW_ID), any(RecommendAlbumCallbackRequest.class));
         }
     }
 }

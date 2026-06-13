@@ -9,7 +9,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import shop.jazzmate.jazzmateshop.common.exception.ResourceNotFoundException;
-import shop.jazzmate.jazzmateshop.recommendation.dto.RecommendAlbumBatchRequest;
+import shop.jazzmate.jazzmateshop.recommendation.dto.RecommendAlbumCallbackRequest;
 import shop.jazzmate.jazzmateshop.recommendation.entity.RecommendAlbum;
 import shop.jazzmate.jazzmateshop.userReview.UserReviewRepository;
 import shop.jazzmate.jazzmateshop.userReview.entity.RecommendationStatus;
@@ -19,6 +19,7 @@ import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -67,7 +68,7 @@ class RecommendAlbumServiceTest {
             List<RecommendAlbum> saved = captor.getValue();
             assertThat(saved).hasSize(1);
             assertThat(saved.get(0).getUserReviewId()).isEqualTo(REVIEW_ID);
-            assertThat(saved.get(0).getAlbumId()).isEqualTo(ALBUM_ID_10);
+            assertThat(saved.get(0).getAlbumId()).isEqualTo(UUID.fromString(ALBUM_ID_10));
         }
 
         @Test
@@ -127,16 +128,19 @@ class RecommendAlbumServiceTest {
         }
     }
 
-    private RecommendAlbumBatchRequest buildBatchRequest(String... albumIds) {
-        List<RecommendAlbumBatchRequest.Item> items = new ArrayList<>();
+    private RecommendAlbumCallbackRequest buildBatchRequest(String... albumIds) {
+        List<RecommendAlbumCallbackRequest.Item> items = new ArrayList<>();
         for (String albumId : albumIds) {
-            items.add(new RecommendAlbumBatchRequest.Item(
+            items.add(new RecommendAlbumCallbackRequest.Item(
                     albumId,
+                    null,
+                    null,
                     new BigDecimal("0.9500"),
-                    "분위기가 잘 맞습니다"
+                    "분위기가 잘 맞습니다",
+                    null
             ));
         }
-        return new RecommendAlbumBatchRequest(
+        return new RecommendAlbumCallbackRequest(
                 RecommendationStatus.COMPLETED,
                 items,
                 null,
@@ -144,8 +148,8 @@ class RecommendAlbumServiceTest {
         );
     }
 
-    private RecommendAlbumBatchRequest buildFailedRequest() {
-        return new RecommendAlbumBatchRequest(
+    private RecommendAlbumCallbackRequest buildFailedRequest() {
+        return new RecommendAlbumCallbackRequest(
                 RecommendationStatus.FAILED,
                 List.of(),
                 FAILURE_ERROR_CODE,
