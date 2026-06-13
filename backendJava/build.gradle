@@ -2,6 +2,7 @@ plugins {
 	id 'java'
 	id 'org.springframework.boot' version '3.4.5'
 	id 'io.spring.dependency-management' version '1.1.7'
+	id 'jacoco'
 }
 
 group = 'shop.jazzmate'
@@ -37,4 +38,14 @@ dependencies {
 
 tasks.named('test') {
 	useJUnitPlatform()
+	finalizedBy tasks.named('jacocoTestReport')
+}
+
+jacocoTestReport {
+	dependsOn test
+	reports {
+		xml.required = true
+		html.required = true
+		csv.required = false
+	}
 }

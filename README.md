@@ -1,9 +1,10 @@
-# AllAboutJazz 데이터 파이프라인
+# JazzmateShop
 
-AllAboutJazz 재즈 리뷰를 수집하고, GPT 요약과 임베딩을 거쳐 Supabase에 저장하는 Airflow 기반 데이터 파이프라인.
+재즈 감상문을 작성하면 AI가 유사한 앨범을 추천해주는 서비스.
 
-## 프로젝트 바로가기                                                                      
-                                                                                          
+AllAboutJazz 리뷰를 수집·요약·임베딩한 데이터를 기반으로, 사용자 감상문과 유사한 앨범을 비동기 AI 추천으로 제공한다.
+
+## 프로젝트 바로가기                 
 [https://actlog.shop/](https://actlog.shop/)   
 
 ## 기술 스택
@@ -15,88 +16,78 @@ AllAboutJazz 재즈 리뷰를 수집하고, GPT 요약과 임베딩을 거쳐 Su
 | AI 요약 | OpenAI GPT Batch API (`gpt-4o-mini`) |
 | AI 임베딩 | OpenAI Embedding Batch API (`text-embedding-3-small`, dim=1536) |
 | 관계형 DB | Supabase (PostgreSQL 16 + pgvector) |
-| 메시지 브로커 | Redis 7.2 |
-| 알림 | Slack Webhook |
+| 백엔드 | Spring Boot 3 (Java) + FastAPI (Python) |
+| 프론트엔드 | React |
 | 컨테이너 | Docker Compose |
 
-## 파이프라인 구조
+## 아키텍처
 
-3개의 DAG가 순차적으로 트리거되는 구조.
+**서비스 흐름**
+```
+Browser
+  ▼ :80
+[nginx]
+  ├── /**       → React static (SPA)
+  └── /api/**   → Spring Boot :8080
+                      └── FastAPI :8000 (내부 전용)
+                              └── Supabase PostgreSQL
+```
 
+**데이터 파이프라인 (Airflow)**
 ```
 DAG 1: URL 수집 → 크롤링 → GPT Batch 제출
          ↓ (TriggerDagRunOperator)
 DAG 2: GPT Batch 완료 대기 (Sensor) → 결과 처리 → Embedding Batch 제출
          ↓ (TriggerDagRunOperator)
-DAG 3: Embedding Batch 완료 대기 (Sensor) → 벡터 저장
+DAG 3: Embedding Batch 완료 대기 (Sensor) → 벡터 저장 (pgvector)
 ```
 
-## 프로젝트 구조
+## 개발 환경 실행
 
-```
-jazzShop_202601/
-├── dags/
-│   ├── 1_crawl_dag.py
-│   ├── 2_summary_dag.py
-│   ├── 3_embedding_vector_dag.py
-│   └── crawling/
-│       ├── core/config.py
-│       ├── crawlers/playwright_crawler.py
-│       ├── services/resource_monitor.py
-│       └── utils/
-├── pipeline_services/
-│   ├── exceptions.py
-│   ├── superbase_service.py
-│   ├── openai_service.py
-│   ├── crawl_job_manager.py
-│   └── async_runner.py
-├── migrations/
-├── docs/adr/
-├── Dockerfile
-├── docker-compose.yaml
-├── AGENTS.md
-└── CLAUDE.md
+각 서비스를 로컬에서 직접 실행한다.
+
+**frontend**
+```bash
+cd frontend
+npm install
+npm run dev        # http://localhost:5173
 ```
 
-## 시작하기
-
-### 필수 환경변수 (`.env`)
-
+**Java backend**
 ```
-OPENAI_API_KEY=
-SUPABASE_URL=
-SUPABASE_KEY=
-SLACK_WEBHOOK_URL=
-AIRFLOW_UID=
+IDE에서 backendJava 프로젝트 실행 (IntelliJ 권장)
+# http://localhost:8080
 ```
 
-### 실행
+**Python AI API**
+```bash
+cd backendPython
+uvicorn app.main:app --reload   # http://localhost:8000
+```
+
+환경변수는 `.env.example`을 참고해 각 서비스에 맞게 설정한다.
+
+## 운영 전 리허설 (Docker Compose)
+
+전체 스택을 Docker로 띄워 운영 환경과 동일하게 검증한다.
 
 ```bash
-# 환경 시작
-docker compose up
-
-# Airflow 웹 UI
-http://localhost:8080  # airflow / airflow
-
-# Celery 모니터링 (Flower)
-docker compose --profile flower up
-http://localhost:5555
+cp .env.example .env   # 실제 값으로 수정
+docker compose up --build
+# http://localhost:80
 ```
 
-### DB 마이그레이션
+> 상세 인프라 설계 및 환경별 비교: [docs/infra/DEPLOY.md](docs/infra/DEPLOY.md)
 
-`migrations/` 폴더의 SQL 파일을 Supabase 대시보드에서 순서대로 실행.
+## DB 마이그레이션
+
+`pipeline/migrations/`, `backendJava/migrations/` 폴더의 SQL 파일을 Supabase 대시보드에서 순서대로 실행한다.
 
 ## 설계 결정 (ADR)
 
-구조적 결정은 `docs/adr/`를 참고.
+설계 결정은 영역별 ADR 문서에서 관리한다.
 
-| ADR | 주제 |
-|---|---|
-| [001](docs/adr/001-overall-architecture.md) | 전체 아키텍처 |
-| [002](docs/adr/002-airflow-celery-executor.md) | CeleryExecutor 선택 |
-| [003](docs/adr/003-dag-pipeline-structure.md) | 3-DAG 파이프라인 구조 |
-| [004](docs/adr/004-db-schema-and-state-model.md) | DB 스키마 |
-| [005](docs/adr/005-failure-idempotency-strategy.md) | 부분 실패와 멱등성 |
-| [006](docs/adr/006-taskflow-api.md) | TaskFlow API |
+- 파이프라인 ADR: [docs/pipeline/adr/](docs/pipeline/adr/)
+- Java 백엔드 ADR: [docs/backendJava/adr/](docs/backendJava/adr/)
+- Python 백엔드 ADR: [docs/backendPython/adr/](docs/backendPython/adr/)
+- 프론트엔드 ADR: [docs/frontend/adr/](docs/frontend/adr/)

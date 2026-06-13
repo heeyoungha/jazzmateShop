@@ -1,0 +1,40 @@
+services:
+  nginx:
+    image: jazzmateshop-nginx:latest
+    build:
+      context: .
+      dockerfile: nginx/Dockerfile
+    ports:
+      - "80:80"
+    depends_on:
+      - java-backend
+      - ai-api
+    restart: unless-stopped
+
+  java-backend:
+    image: jazzmateshop-java-backend:latest
+    build:
+      context: ./backendJava
+      dockerfile: Dockerfile
+    expose:
+      - "8080"
+    env_file:
+      - ${BACKEND_ENV_FILE:-.env.example}
+    environment:
+      SPRING_PROFILES_ACTIVE: production
+      AI_SERVICE_URL: ${AI_SERVICE_URL:-http://ai-api:8000}
+      SPRING_BASE_URL: ${SPRING_BASE_URL:-http://java-backend:8080}
+    restart: unless-stopped
+
+  ai-api:
+    image: jazzmateshop-ai-api:latest
+    build:
+      context: ./backendPython
+      dockerfile: Dockerfile
+    expose:
+      - "8000"
+    env_file:
+      - ${AI_ENV_FILE:-.env.example}
+    environment:
+      SPRING_BASE_URL: ${SPRING_BASE_URL:-http://java-backend:8080}
+    restart: unless-stopped
