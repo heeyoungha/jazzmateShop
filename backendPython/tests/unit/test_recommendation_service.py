@@ -2,6 +2,7 @@ import pytest
 
 from app.core.error_codes import RecommendationErrorCode
 from app.core.exceptions import EmbeddingError, RepositoryError
+from app.schemas.recommendation import RecommendationReason
 from app.services.recommendation_service import RecommendationService
 
 from tests.fixtures import (
@@ -46,10 +47,10 @@ class FakeRecommendationReasonService:
     async def generate_reasons(self, review_content, candidates):
         self.calls.append({"review_content": review_content, "candidates": candidates})
         return [
-            {
-                "album_id": candidate.album_id,
-                "recommendation_reason": f"{candidate.album_title} 추천 사유",
-            }
+            RecommendationReason(
+                album_id=candidate.album_id,
+                recommendation_reason=f"{candidate.album_title} 추천 사유",
+            )
             for candidate in candidates
         ]
 
@@ -182,12 +183,13 @@ async def test_recommend_by_review_search_failure_sends_failed_callback():
 
 
 @pytest.mark.asyncio
-async def test_recommend_by_review_callback_failure_logs_only(caplog):
-    """콜백 전송 실패 시 예외를 전파하지 않고 로그만 기록한다."""
+async def test_recommend_by_review_callback_failure_logs_and_raises(caplog):
+    """콜백 전송 실패 시 로그를 남기고 예외를 전파한다."""
     service = build_service(
         callback_client=FakeSpringCallbackClient(error=RuntimeError("spring down"))
     )
 
-    await service.recommend_by_review(REVIEW_ID, REVIEW_CONTENT)
+    with pytest.raises(RuntimeError, match="spring down"):
+        await service.recommend_by_review(REVIEW_ID, REVIEW_CONTENT)
 
     assert "spring down" in caplog.text

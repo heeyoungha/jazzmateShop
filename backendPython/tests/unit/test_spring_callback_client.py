@@ -9,7 +9,7 @@ from app.core.exceptions import CallbackError, ConfigurationError
 from app.clients.spring_callback_client import SpringCallbackClient
 from app.schemas.recommendation import RecommendationCallbackItem
 
-from tests.fixtures import ALBUM_ID_1, REVIEW_ID
+from tests.fixtures import ALBUM_ID_1, CRITICS_REVIEW_ID_1, REVIEW_ID
 
 
 def make_item():
@@ -17,6 +17,7 @@ def make_item():
         album_id=ALBUM_ID_1,
         recommendation_score=Decimal("0.9423"),
         recommendation_reason="차분한 모달 재즈 분위기가 잘 맞습니다.",
+        critics_review_id=CRITICS_REVIEW_ID_1,
     )
 
 
@@ -54,8 +55,9 @@ async def test_send_completed_result_posts_expected_payload():
     payload = json.loads(request.content)
     assert payload["status"] == "COMPLETED"
     assert payload["recommendations"][0]["albumId"] == ALBUM_ID_1
-    assert payload["recommendations"][0]["recommendationScore"] == 0.9423
+    assert payload["recommendations"][0]["recommendationScore"] == "0.9423"
     assert payload["recommendations"][0]["recommendationReason"]
+    assert payload["recommendations"][0]["criticsReviewId"] == CRITICS_REVIEW_ID_1
 
 
 @pytest.mark.asyncio

@@ -6,6 +6,7 @@ REVIEW_CONTENT = "차분하고 공간감 있는 모달 재즈가 인상적입니
 ALBUM_ID_1 = "00000000-0000-0000-0000-000000000101"
 ALBUM_ID_2 = "00000000-0000-0000-0000-000000000102"
 ALBUM_ID_3 = "00000000-0000-0000-0000-000000000103"
+CRITICS_REVIEW_ID_1 = "1001"
 
 
 def dump_alias(model):
@@ -22,6 +23,7 @@ def make_candidate(album_id=ALBUM_ID_1, similarity=0.9423, **overrides):
         "review_summary": "차분한 모달 재즈와 넓은 공간감이 돋보이는 앨범",
         "review_content": "modal jazz, cool, spacious mood",
         "review_url": "https://example.com/review",
+        "critics_review_id": CRITICS_REVIEW_ID_1,
         "similarity": similarity,
     }
     values.update(overrides)

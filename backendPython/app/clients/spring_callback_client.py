@@ -42,7 +42,9 @@ class SpringCallbackClient:
         try:
             response = await self.http_client.post(url, json=payload.model_dump(by_alias=True, mode="json"))
             if not 200 <= response.status_code < 300:
-                raise CallbackError(f"Spring callback failed: {response.status_code}")
+                raise CallbackError(
+                    f"Spring callback failed: status={response.status_code}, body={response.text}"
+                )
         except CallbackError:
             raise
         except Exception as exc:
