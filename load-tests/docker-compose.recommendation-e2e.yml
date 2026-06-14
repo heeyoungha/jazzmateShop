@@ -15,6 +15,29 @@ services:
       timeout: 5s
       retries: 20
 
+  # Real OpenAI/Supabase AI API. Keep this block for real E2E runs.
+  #
+  # ai-api:
+  #   build:
+  #     context: ../backendPython
+  #     dockerfile: Dockerfile
+  #   depends_on:
+  #     e2e-db:
+  #       condition: service_healthy
+  #   ports:
+  #     - "8000:8000"
+  #   environment:
+  #     SPRING_BASE_URL: http://java-backend:8080
+  #     SUPABASE_URL: ${SUPABASE_URL:-}
+  #     SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:-}
+  #     OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+  #     OPENAI_EMBEDDING_MODEL: ${OPENAI_EMBEDDING_MODEL:-text-embedding-3-small}
+  #     OPENAI_CHAT_MODEL: ${OPENAI_CHAT_MODEL:-gpt-4o-mini}
+  #     OPENAI_TIMEOUT_SECONDS: ${OPENAI_TIMEOUT_SECONDS:-30}
+  #     OPENAI_MAX_RETRIES: ${OPENAI_MAX_RETRIES:-2}
+  #     EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-1536}
+  #     RECOMMENDATION_TOP_K: ${RECOMMENDATION_TOP_K:-5}
+
   ai-api:
     build:
       context: ../backendPython
@@ -24,17 +47,15 @@ services:
         condition: service_healthy
     ports:
       - "8000:8000"
+    volumes:
+      - ./mock-ai-api:/mock-ai-api:ro
     environment:
       SPRING_BASE_URL: http://java-backend:8080
-      SUPABASE_URL: ${SUPABASE_URL:-}
-      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:-}
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      OPENAI_EMBEDDING_MODEL: ${OPENAI_EMBEDDING_MODEL:-text-embedding-3-small}
-      OPENAI_CHAT_MODEL: ${OPENAI_CHAT_MODEL:-gpt-4o-mini}
-      OPENAI_TIMEOUT_SECONDS: ${OPENAI_TIMEOUT_SECONDS:-30}
-      OPENAI_MAX_RETRIES: ${OPENAI_MAX_RETRIES:-2}
-      EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-1536}
-      RECOMMENDATION_TOP_K: ${RECOMMENDATION_TOP_K:-5}
+      MOCK_EMBEDDING_DELAY_MS: ${MOCK_EMBEDDING_DELAY_MS:-300}
+      MOCK_REASON_DELAY_MS: ${MOCK_REASON_DELAY_MS:-700}
+      MOCK_CALLBACK_TIMEOUT_SECONDS: ${MOCK_CALLBACK_TIMEOUT_SECONDS:-10}
+      MOCK_RECOMMENDATION_COUNT: ${MOCK_RECOMMENDATION_COUNT:-5}
+    command: ["uvicorn", "main:app", "--app-dir", "/mock-ai-api", "--host", "0.0.0.0", "--port", "8000"]
 
   java-backend:
     build:

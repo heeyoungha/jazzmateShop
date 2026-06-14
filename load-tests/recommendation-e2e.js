@@ -9,18 +9,25 @@ import { Counter, Rate, Trend } from "k6/metrics";
 //
 // Real OpenAI small load:
 // BASE_URL=http://localhost:8080 REQUEST_TIMEOUT=30s POLLING_INTERVAL_SECONDS=3 \
-// MAX_WAIT_SECONDS=180 VUS=5 DURATION=3m \
+// MAX_WAIT_SECONDS=180 VUS=10 DURATION=3m \
 // k6 run load-tests/recommendation-e2e.js
 //
 // Mock OpenAI structural load:
 // BASE_URL=http://localhost:8080 REQUEST_TIMEOUT=10s POLLING_INTERVAL_SECONDS=1 \
 // MAX_WAIT_SECONDS=60 VUS=100 DURATION=5m \
 // k6 run load-tests/recommendation-e2e.js
+//
+// Mock OpenAI ramping structural load:
+// BASE_URL=http://localhost:8080 REQUEST_TIMEOUT=10s POLLING_INTERVAL_SECONDS=1 \
+// MAX_WAIT_SECONDS=60 LOAD_PROFILE=ramping \
+// RAMP_UP_DURATION=1m RAMP_UP_VUS=100 HOLD_DURATION=5m HOLD_VUS=500 RAMP_DOWN_DURATION=30s \
+// k6 run load-tests/recommendation-e2e.js
 
 const baseUrl = __ENV.BASE_URL || "http://localhost:8080";
 const requestTimeout = __ENV.REQUEST_TIMEOUT || "30s";
 const pollingIntervalSeconds = Number(__ENV.POLLING_INTERVAL_SECONDS || "3");
 const maxWaitSeconds = Number(__ENV.MAX_WAIT_SECONDS || "180");
+const loadProfile = (__ENV.LOAD_PROFILE || "constant").toLowerCase();
 const minCompletionSuccessRate = __ENV.MIN_COMPLETION_SUCCESS_RATE || "0.95";
 const maxSubmitP95Ms = __ENV.MAX_SUBMIT_P95_MS || "1000";
 const maxPollingP95Ms = __ENV.MAX_POLLING_P95_MS || "500";
@@ -58,14 +65,30 @@ const thresholds = disableThresholds
       e2e_failed_rate: ["rate<0.05"],
     };
 
+function buildScenario() {
+  if (loadProfile === "ramping") {
+    return {
+      executor: "ramping-vus",
+      stages: [
+        { duration: __ENV.RAMP_UP_DURATION || "1m", target: Number(__ENV.RAMP_UP_VUS || "100") },
+        { duration: __ENV.HOLD_DURATION || "5m", target: Number(__ENV.HOLD_VUS || "500") },
+        { duration: __ENV.RAMP_DOWN_DURATION || "30s", target: 0 },
+      ],
+      gracefulStop: __ENV.GRACEFUL_STOP || "3m",
+    };
+  }
+
+  return {
+    executor: "constant-vus",
+    vus: Number(__ENV.VUS || "1"),
+    duration: __ENV.DURATION || "1m",
+    gracefulStop: __ENV.GRACEFUL_STOP || "3m",
+  };
+}
+
 export const options = {
   scenarios: {
-    recommendation_e2e_users: {
-      executor: "constant-vus",
-      vus: Number(__ENV.VUS || "1"),
-      duration: __ENV.DURATION || "1m",
-      gracefulStop: __ENV.GRACEFUL_STOP || "3m",
-    },
+    recommendation_e2e_users: buildScenario(),
   },
   thresholds,
 };
