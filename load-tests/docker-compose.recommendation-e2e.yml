@@ -1,6 +1,14 @@
 services:
   e2e-db:
     image: postgres:16-alpine
+    command:
+      - "postgres"
+      - "-c"
+      - "log_min_duration_statement=300"
+      - "-c"
+      - "log_lock_waits=on"
+      - "-c"
+      - "deadlock_timeout=200ms"
     environment:
       POSTGRES_DB: jazzmate_e2e_loadtest
       POSTGRES_USER: jazzmate
@@ -75,3 +83,33 @@ services:
       SPRING_DATASOURCE_PASSWORD: jazzmate
       AI_SERVICE_URL: http://ai-api:8000
       SPRING_BASE_URL: http://java-backend:8080
+      MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: health,metrics,prometheus
+      MANAGEMENT_ENDPOINT_HEALTH_SHOW_DETAILS: always
+      SERVER_TOMCAT_MBEANREGISTRY_ENABLED: "true"
+
+  prometheus:
+    image: prom/prometheus:v3.0.1
+    depends_on:
+      java-backend:
+        condition: service_started
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=2h"
+
+  grafana:
+    image: grafana/grafana:11.3.1
+    depends_on:
+      prometheus:
+        condition: service_started
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
