@@ -1,0 +1,56 @@
+services:
+  e2e-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: jazzmate_e2e_loadtest
+      POSTGRES_USER: jazzmate
+      POSTGRES_PASSWORD: jazzmate
+    ports:
+      - "54330:5432"
+    volumes:
+      - ./polling-fake-db-init.sql:/docker-entrypoint-initdb.d/001_e2e_fake_db.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U jazzmate -d jazzmate_e2e_loadtest"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  ai-api:
+    build:
+      context: ../backendPython
+      dockerfile: Dockerfile
+    depends_on:
+      e2e-db:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    environment:
+      SPRING_BASE_URL: http://java-backend:8080
+      SUPABASE_URL: ${SUPABASE_URL:-}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_EMBEDDING_MODEL: ${OPENAI_EMBEDDING_MODEL:-text-embedding-3-small}
+      OPENAI_CHAT_MODEL: ${OPENAI_CHAT_MODEL:-gpt-4o-mini}
+      OPENAI_TIMEOUT_SECONDS: ${OPENAI_TIMEOUT_SECONDS:-30}
+      OPENAI_MAX_RETRIES: ${OPENAI_MAX_RETRIES:-2}
+      EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-1536}
+      RECOMMENDATION_TOP_K: ${RECOMMENDATION_TOP_K:-5}
+
+  java-backend:
+    build:
+      context: ../backendJava
+      dockerfile: Dockerfile
+    depends_on:
+      e2e-db:
+        condition: service_healthy
+      ai-api:
+        condition: service_started
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_PROFILES_ACTIVE: production
+      SPRING_DATASOURCE_URL: jdbc:postgresql://e2e-db:5432/jazzmate_e2e_loadtest
+      SPRING_DATASOURCE_USERNAME: jazzmate
+      SPRING_DATASOURCE_PASSWORD: jazzmate
+      AI_SERVICE_URL: http://ai-api:8000
+      SPRING_BASE_URL: http://java-backend:8080

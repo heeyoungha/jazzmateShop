@@ -1,0 +1,33 @@
+services:
+  polling-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: jazzmate_loadtest
+      POSTGRES_USER: jazzmate
+      POSTGRES_PASSWORD: jazzmate
+    ports:
+      - "54329:5432"
+    volumes:
+      - ./polling-fake-db-init.sql:/docker-entrypoint-initdb.d/001_polling_fake_db.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U jazzmate -d jazzmate_loadtest"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  java-backend:
+    build:
+      context: ../backendJava
+      dockerfile: Dockerfile
+    depends_on:
+      polling-db:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_PROFILES_ACTIVE: production
+      SPRING_DATASOURCE_URL: jdbc:postgresql://polling-db:5432/jazzmate_loadtest
+      SPRING_DATASOURCE_USERNAME: jazzmate
+      SPRING_DATASOURCE_PASSWORD: jazzmate
+      AI_SERVICE_URL: http://127.0.0.1:9
+      SPRING_BASE_URL: http://java-backend:8080
