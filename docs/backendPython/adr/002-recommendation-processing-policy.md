@@ -76,41 +76,50 @@ LangChain은 프롬프트 체인, output parser, retriever 연결 등 모델 호
 
 ---
 
-## Decision 3: 유사도 검색 대상은 `v_embedding_with_album`으로 고정한다
+## Decision 3: 유사도 검색은 `match_albums` RPC로 실행한다
 
-추천 후보 검색은 `v_embedding_with_album`을 기준으로 수행한다.
+추천 후보 검색은 Supabase RPC `match_albums`를 통해 수행한다.
 
-이 View는 FastAPI가 여러 파이프라인 원천 테이블을 직접 조인하지 않도록 만든 추천 검색용 읽기 모델이다.
-FastAPI는 "추천 가능한 앨범 후보"라는 계약만 소비하고, 원천 테이블 조인 방식과 pipeline 내부 스키마는 DB/View 계층에 숨긴다.
+```python
+# AlbumEmbeddingRepository
+response = self.database.rpc(
+    self.RPC_FUNC_NAME,  # "match_albums"
+    {"query_embedding": embedding, "match_count": top_k}
+).execute()
+```
 
-필요 컬럼:
+`match_albums`는 `v_embedding_with_album` 뷰를 기반으로 pgvector 코사인 유사도 계산, 정렬, LIMIT을 DB 함수 안에서 처리한다 (`backendJava/migrations/004_fix_recommend_album_table.sql` 참조).
+
+FastAPI는 `match_albums`라는 계약만 소비하고, 내부적으로 어떤 뷰/테이블을 조인하는지는 DB 함수 계층에 숨긴다.
+
+반환 컬럼:
 
 | 컬럼 | 설명 |
 |---|---|
-| `album_id` | Spring 콜백의 `albumId` (UUID 문자열) |
+| `album_id` | Spring 콜백의 `albumId` (UUID) |
 | `album_artist` | 추천 사유 생성 컨텍스트 |
 | `album_title` | 추천 사유 생성 컨텍스트 |
-| `url` | 선택적 컨텍스트 또는 디버깅 정보 |
-| `embedding` | pgvector 유사도 계산 대상 |
-
-정렬 기준:
-
-```text
-cosine similarity DESC
-LIMIT RECOMMENDATION_TOP_K
-```
+| `critics_review_id` | 평론가 리뷰 연결 ID |
+| `similarity` | 코사인 유사도 (0.0 ~ 1.0) |
 
 추천 점수는 Spring DB 제약에 맞춰 `0.0000`부터 `1.0000` 사이 값으로 정규화하고 소수점 4자리까지 전달한다.
 
 ### Rationale
 
-`v_embedding_with_album`을 고정 검색 대상으로 두면 다음 이점이 있다.
+`v_embedding_with_album`을 FastAPI에서 `from_().select().order().limit()` 체인으로 직접 조회하면 pgvector의 `<=>` 코사인 거리 연산자를 Python 레이어에서 표현할 수 없다. 유사도 계산, 정렬, LIMIT은 반드시 DB 안에서 실행되어야 한다.
 
-- FastAPI가 `embedding_vectors`, 리뷰 원문, 요약, URL 테이블의 조인 구조를 알 필요가 없다.
-- pipeline 내부 테이블이 바뀌어도 View 컬럼 계약만 유지하면 FastAPI 변경을 줄일 수 있다.
-- DB 권한을 추천 후보 View 읽기로 제한할 수 있어 상태 테이블에 대한 우발적 접근을 줄인다.
-- pgvector 검색/필터링/정렬 튜닝 지점을 DB View 계약 근처에 모을 수 있다.
-- 테스트에서 여러 테이블 fixture 대신 View row fixture만 준비하면 된다.
+`match_albums` DB 함수로 캡슐화하면:
+
+- FastAPI가 pgvector 연산자나 뷰 내부 조인 구조를 알 필요가 없다.
+- 검색 로직(인덱스 튜닝, 필터 추가, 뷰 변경)을 DB 함수 안에서 수정할 수 있어 FastAPI 코드 변경이 줄어든다.
+- 테스트에서 `FakeDatabaseClient.rpc()`만 구현하면 충분하다.
+
+### Alternatives
+
+| 옵션 | 채택 여부 | 이유 |
+|---|---|---|
+| `from_("v_embedding_with_album").select(...).order(...).limit(...)` | 기각 | pgvector `<=>` 연산자를 Supabase Python 클라이언트 체인으로 표현할 수 없다. 유사도 계산 자체가 불가능하다. |
+| `match_albums` RPC 호출 | 채택 | DB 함수 안에서 pgvector 연산, 정렬, LIMIT을 처리한다. FastAPI는 함수 이름과 인자 계약만 안다. |
 
 ---
 

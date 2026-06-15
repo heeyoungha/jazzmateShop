@@ -25,7 +25,12 @@ export const review = {
 export const recommendation = {
   id: 1,
   userReviewId: REVIEW_ID,
-  albumId: 101,
+  albumId: "00000000-0000-0000-0000-000000000101",
+  albumTitle: "Kind of Blue",
+  albumArtist: "Miles Davis",
+  criticsReviewId: CRITICS_ID,
+  criticsReviewUrl: `/critics/${CRITICS_ID}`,
+  recommendationScore: 0.9423,
   recommendationReason: "모달 재즈 특유의 정적인 분위기가 유사합니다.",
   createdAt: "2026-05-23T10:01:00",
   updatedAt: "2026-05-23T10:01:00",

@@ -3,7 +3,7 @@
 > pytest 학습 노트(`learning-notes.md`)와 별도로, FastAPI 프레임워크 개념을 정리한 문서입니다.
 > `/explain-python` 커맨드가 자동으로 읽고 업데이트합니다.
 
-최종 업데이트: 2026-06-12 (Pydantic model_dump, model_to_alias_dict 추가)
+최종 업데이트: 2026-06-15 (pydantic-settings BaseSettings 추가)
 
 ---
 
@@ -573,6 +573,73 @@ return model.dict(by_alias=True)   # v1 fallback
 ```
 
 신규 프로젝트(v2 전용)에서는 `model.model_dump(by_alias=True, mode="json")` 한 줄로 끝낸다.
+
+---
+
+### `pydantic-settings` — 환경변수를 타입 선언만으로 관리
+
+환경변수를 읽고 타입을 변환하는 헬퍼 함수를 직접 만드는 대신, `BaseSettings`를 상속하면 타입 힌트만으로 자동 처리된다.
+
+```python
+# 변경 전 — 헬퍼 함수 직접 작성
+def _get_required_env(name: str) -> str:
+    value = os.getenv(name)
+    if value is None or not value.strip():
+        raise ConfigurationError(f"{name} must be configured")
+    return value
+
+def _get_required_int_env(name: str) -> int:
+    return int(_get_required_env(name))
+
+class Settings:
+    EMBEDDING_DIMENSIONS = _get_required_int_env("EMBEDDING_DIMENSIONS")
+
+# 변경 후 — 타입 선언만
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=".env")
+
+    EMBEDDING_DIMENSIONS: int        # str → int 자동 변환, 누락 시 ValidationError
+    OPENAI_TIMEOUT_SECONDS: float    # str → float 자동 변환
+    OPENAI_MAX_RETRIES: int = 2      # 기본값은 = 로 선언
+```
+
+`BaseSettings`가 자동으로 해주는 것:
+- `.env` 파일 로드 (`model_config`에서 지정)
+- 환경변수 값을 타입 힌트에 맞게 변환 (`"1536"` → `1536`)
+- 필수 필드 누락 시 `ValidationError` 발생 (필드명 포함)
+- 기본값이 있는 필드(`= 값`)는 환경변수 없어도 동작
+
+**`class Config` vs `model_config`**
+
+Pydantic v2부터 `class Config` 방식은 deprecated. `SettingsConfigDict`를 사용해야 경고 없이 동작한다.
+
+```python
+# deprecated (Pydantic v1 방식)
+class Config:
+    env_file = ".env"
+
+# 현재 방식 (Pydantic v2)
+model_config = SettingsConfigDict(env_file=".env")
+```
+
+**테스트에서 주의할 점**
+
+기존 코드가 `ConfigurationError`를 발생시키던 곳이 이제 `ValidationError`로 바뀐다.
+
+```python
+# 변경 전 테스트
+with pytest.raises(ConfigurationError, match="EMBEDDING_DIMENSIONS"):
+    ...
+
+# 변경 후 테스트
+from pydantic import ValidationError
+with pytest.raises(ValidationError, match="EMBEDDING_DIMENSIONS"):
+    ...
+```
+
+- 파일: `backendPython/app/core/config.py`, `backendPython/tests/unit/test_config.py`
 
 ---
 
