@@ -1,14 +1,38 @@
 package shop.jazzmate.jazzmateshop.recommendation.client;
 
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
+import org.springframework.web.client.RestClient;
+
+import java.util.Map;
 
 @Component
 @Slf4j
 public class AiRecommendationClient {
 
+    private final RestClient restClient;
+
+    public AiRecommendationClient(@Value("${fastapi.base-url}") String fastapiBaseUrl) {
+        this.restClient = RestClient.builder()
+                .baseUrl(fastapiBaseUrl)
+                .build();
+    }
+
     public void requestRecommendation(Integer reviewId, String reviewContent) {
-        // TODO: FastAPI POST /recommend/by-review 호출
-        // 실패 시 내부 catch — 감상문 저장 트랜잭션에 영향 없음
+        try {
+            ResponseEntity<Void> response = restClient.post()
+                    .uri("/recommend/review")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(Map.of("review_id", reviewId, "review_content", reviewContent))
+                    .retrieve()
+                    .toBodilessEntity();
+            log.info("FastAPI 추천 요청 전송 완료: reviewId={}, status={}", reviewId, response.getStatusCode());
+        } catch (Exception e) {
+            log.error("FastAPI 추천 요청 실패: reviewId={}, error={}", reviewId, e.getMessage(), e);
+            throw new IllegalStateException("FastAPI recommendation request failed: reviewId=" + reviewId, e);
+        }
     }
 }
