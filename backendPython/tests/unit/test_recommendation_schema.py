@@ -8,7 +8,7 @@ from app.schemas.recommendation import (
 
 from app.core.error_codes import RecommendationErrorCode
 
-from tests.fixtures import ALBUM_ID_1, REVIEW_CONTENT, REVIEW_ID, dump_alias
+from tests.fixtures import ALBUM_ID_1, CRITICS_REVIEW_ID_1, REVIEW_CONTENT, REVIEW_ID, dump_alias
 
 
 def test_request_valid_maps_fields():
@@ -32,12 +32,16 @@ def test_callback_item_serializes_camel_case():
         album_id=ALBUM_ID_1,
         recommendation_score=Decimal("0.9423"),
         recommendation_reason="감상문과 앨범 모두 차분한 모달 재즈의 분위기를 공유합니다.",
+        critics_review_id=CRITICS_REVIEW_ID_1,
     )
 
     assert dump_alias(item) == {
         "albumId": ALBUM_ID_1,
+        "albumArtist": None,
+        "albumTitle": None,
         "recommendationScore": Decimal("0.9423"),
         "recommendationReason": "감상문과 앨범 모두 차분한 모달 재즈의 분위기를 공유합니다.",
+        "criticsReviewId": CRITICS_REVIEW_ID_1,
     }
 
 
@@ -48,6 +52,7 @@ def test_callback_request_completed_contains_recommendations():
         album_id=ALBUM_ID_1,
         recommendation_score=Decimal("0.9423"),
         recommendation_reason="감상문과 앨범 모두 차분한 모달 재즈의 분위기를 공유합니다.",
+        critics_review_id=CRITICS_REVIEW_ID_1,
     )
 
     request = RecommendationCallbackRequest.completed([item])

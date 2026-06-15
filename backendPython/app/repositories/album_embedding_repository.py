@@ -5,7 +5,7 @@ from app.schemas.recommendation import AlbumCandidate
 
 
 class AlbumEmbeddingRepository:
-    VIEW_NAME = "v_embedding_with_album"
+    RPC_FUNC_NAME = "match_albums"
 
     def __init__(self, database: Optional[Any] = None):
         if database is None:
@@ -17,7 +17,7 @@ class AlbumEmbeddingRepository:
     ) -> List[AlbumCandidate]:
         try:
             response = self.database.rpc(
-                "match_albums",
+                self.RPC_FUNC_NAME,
                 {
                     "query_embedding": embedding,   # 사용자 감상문 벡터
                     "match_count": top_k,

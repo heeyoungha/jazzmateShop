@@ -1,4 +1,24 @@
+import os
+
 import pytest
+
+# pytest collection 전에 실행 — settings = Settings() 가 import 시점에 실행되므로
+# collection 이전에 필수 환경변수를 미리 설정해야 ValidationError가 나지 않는다.
+# 실제 값은 사용하지 않으므로 테스트용 더미값으로 채운다.
+_TEST_ENV = {
+    "SUPABASE_URL": "https://test.supabase.co",
+    "SUPABASE_SERVICE_ROLE_KEY": "test-service-role-key",
+    "OPENAI_CHAT_MODEL": "gpt-4o-mini",
+    "EMBEDDING_DIMENSIONS": "1536",
+    "RECOMMENDATION_TOP_K": "3",
+    "SPRING_BASE_URL": "http://java-backend:8080",
+    "OPENAI_TIMEOUT_SECONDS": "30",
+}
+
+
+def pytest_configure(config):
+    for key, value in _TEST_ENV.items():
+        os.environ.setdefault(key, value)
 
 
 class FakeDatabaseClient:

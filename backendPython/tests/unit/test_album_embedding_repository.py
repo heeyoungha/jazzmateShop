@@ -40,6 +40,10 @@ class FakeDatabaseClient:
     def from_(self, table_name):
         return self.query.from_(table_name)
 
+    def rpc(self, func_name, params):
+        self.query.calls.append(("rpc", func_name, params))
+        return self.query
+
 
 def test_album_embedding_repository_requires_database_client():
     """DB client 없이 Repository를 생성하면 설정 누락 예외가 발생한다."""
@@ -71,7 +75,9 @@ async def test_find_similar_albums_queries_embedding_with_album_view():
 
     await repository.find_similar_albums([0.1] * settings.EMBEDDING_DIMENSIONS, top_k=3)
 
-    assert ("from", "v_embedding_with_album") in query.calls
+    rpc_calls = [call for call in query.calls if call[0] == "rpc"]
+    assert len(rpc_calls) == 1
+    assert rpc_calls[0][1] == "match_albums"
 
 
 @pytest.mark.asyncio
