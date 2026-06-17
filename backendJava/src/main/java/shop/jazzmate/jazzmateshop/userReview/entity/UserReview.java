@@ -25,8 +25,8 @@ public class UserReview {
     @Column(name = "user_id", length = 255)
     private String userId;
 
-    @Column(name = "track_name", length = 255)
-    private String trackName;
+    @Column(name = "album_name", length = 255)
+    private String albumName;
 
     @Column(name = "artist_name", length = 255)
     private String artistName;

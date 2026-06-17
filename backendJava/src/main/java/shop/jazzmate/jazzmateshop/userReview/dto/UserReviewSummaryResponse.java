@@ -11,7 +11,7 @@ import java.time.LocalDateTime;
 @Builder
 public class UserReviewSummaryResponse {
     private Integer id;
-    private String trackName;
+    private String albumName;
     private String artistName;
     private String reviewContent;
     private BigDecimal rating;
@@ -22,7 +22,7 @@ public class UserReviewSummaryResponse {
     public static UserReviewSummaryResponse from(UserReview review) {
         return UserReviewSummaryResponse.builder()
                 .id(review.getId())
-                .trackName(review.getTrackName())
+                .albumName(review.getAlbumName())
                 .artistName(review.getArtistName())
                 .reviewContent(review.getReviewContent())
                 .rating(review.getRating())

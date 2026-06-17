@@ -36,7 +36,7 @@ public class UserReviewResponse {
     public static class UserReviewDetail {
         private Integer id;
         private String userId;
-        private String trackName;
+        private String albumName;
         private String artistName;
         private String reviewContent;
         private BigDecimal rating;
@@ -57,7 +57,7 @@ public class UserReviewResponse {
             return UserReviewDetail.builder()
                     .id(userReview.getId())
                     .userId(userReview.getUserId())
-                    .trackName(userReview.getTrackName())
+                    .albumName(userReview.getAlbumName())
                     .artistName(userReview.getArtistName())
                     .reviewContent(userReview.getReviewContent())
                     .rating(userReview.getRating())

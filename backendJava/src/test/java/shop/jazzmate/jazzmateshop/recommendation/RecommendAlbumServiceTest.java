@@ -160,7 +160,7 @@ class RecommendAlbumServiceTest {
     private UserReview buildReview() {
         return UserReview.builder()
                 .id(REVIEW_ID)
-                .trackName("So What")
+                .albumName("Kind of Blue")
                 .artistName("Miles Davis")
                 .reviewContent("명반")
                 .isPublic(true)

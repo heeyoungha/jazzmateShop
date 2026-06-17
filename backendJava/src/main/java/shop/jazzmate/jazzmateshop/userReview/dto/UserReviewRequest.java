@@ -11,7 +11,7 @@ import java.math.BigDecimal;
 public class UserReviewRequest {
 
     @NotBlank
-    private String trackName;
+    private String albumName;
 
     @NotBlank
     private String artistName;

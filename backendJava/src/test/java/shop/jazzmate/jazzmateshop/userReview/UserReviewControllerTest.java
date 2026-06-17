@@ -62,7 +62,7 @@ class UserReviewControllerTest {
             mockMvc.perform(post("/api/user-reviews")
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(Map.of(
-                                    "trackName", "So What",
+                                    "albumName", "Kind of Blue",
                                     "artistName", "Miles Davis",
                                     "reviewContent", "재즈의 정수"
                             ))))
@@ -73,8 +73,8 @@ class UserReviewControllerTest {
         }
 
         @Test
-        @DisplayName("trackName 누락 → HTTP 400, success=false")
-        void create_missingTrackName_returns400() throws Exception {
+        @DisplayName("albumName 누락 → HTTP 400, success=false")
+        void create_missingAlbumName_returns400() throws Exception {
             mockMvc.perform(post("/api/user-reviews")
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(Map.of(
@@ -91,7 +91,7 @@ class UserReviewControllerTest {
             mockMvc.perform(post("/api/user-reviews")
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(Map.of(
-                                    "trackName", "So What",
+                                    "albumName", "Kind of Blue",
                                     "reviewContent", "재즈의 정수"
                             ))))
                     .andExpect(status().isBadRequest())
@@ -104,7 +104,7 @@ class UserReviewControllerTest {
             mockMvc.perform(post("/api/user-reviews")
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(Map.of(
-                                    "trackName", "So What",
+                                    "albumName", "Kind of Blue",
                                     "artistName", "Miles Davis"
                             ))))
                     .andExpect(status().isBadRequest())

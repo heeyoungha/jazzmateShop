@@ -37,7 +37,7 @@ class DtoFactoryTest {
     private final UserReview REVIEW = UserReview.builder()
             .id(1)
             .userId("user-001")
-            .trackName("So What")
+            .albumName("So What")
             .artistName("Miles Davis")
             .reviewContent("명반")
             .rating(new BigDecimal("4.5"))
@@ -95,12 +95,12 @@ class DtoFactoryTest {
     class UserReviewSummaryResponseFactory {
 
         @Test
-        @DisplayName("8개 필드만 포함 (id, trackName, artistName, reviewContent, rating, mood, genre, createdAt)")
+        @DisplayName("8개 필드만 포함 (id, albumName, artistName, reviewContent, rating, mood, genre, createdAt)")
         void from_mapsOnly8Fields() {
             UserReviewSummaryResponse summary = UserReviewSummaryResponse.from(REVIEW);
 
             assertThat(summary.getId()).isEqualTo(1);
-            assertThat(summary.getTrackName()).isEqualTo("So What");
+            assertThat(summary.getAlbumName()).isEqualTo("So What");
             assertThat(summary.getArtistName()).isEqualTo("Miles Davis");
             assertThat(summary.getReviewContent()).isEqualTo("명반");
             assertThat(summary.getRating()).isEqualByComparingTo("4.5");

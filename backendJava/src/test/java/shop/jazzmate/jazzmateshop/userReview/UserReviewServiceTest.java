@@ -66,7 +66,7 @@ class UserReviewServiceTest {
     // 공통 픽스처
     private final UserReview DEFAULT_SAVED = UserReview.builder()
             .id(1)
-            .trackName("So What")
+            .albumName("So What")
             .artistName("Miles Davis")
             .reviewContent("명반")
             .isPublic(true)
@@ -92,7 +92,7 @@ class UserReviewServiceTest {
 
             // when: 리뷰 생성 요청 실행
             UserReviewCreateResponse response = userReviewService.createUserReview(
-                    buildRequest(DEFAULT_SAVED.getTrackName(), DEFAULT_SAVED.getArtistName(), DEFAULT_SAVED.getReviewContent()));
+                    buildRequest(DEFAULT_SAVED.getAlbumName(), DEFAULT_SAVED.getArtistName(), DEFAULT_SAVED.getReviewContent()));
 
             // then: 반환된 Response에 저장된 엔티티의 id가 매핑되었는지 검증
             assertThat(response.getId()).isEqualTo(DEFAULT_SAVED.getId());
@@ -105,7 +105,7 @@ class UserReviewServiceTest {
 
             // when: 리뷰 생성 요청 실행
             userReviewService.createUserReview(
-                    buildRequest(DEFAULT_SAVED.getTrackName(), DEFAULT_SAVED.getArtistName(), DEFAULT_SAVED.getReviewContent()));
+                    buildRequest(DEFAULT_SAVED.getAlbumName(), DEFAULT_SAVED.getArtistName(), DEFAULT_SAVED.getReviewContent()));
 
             // then: 발행된 이벤트에 reviewId, reviewContent가 담겼는지 검증
             ArgumentCaptor<RecommendationRequestEvent> captor =
@@ -125,7 +125,7 @@ class UserReviewServiceTest {
 
             // when: 리뷰 생성 요청 실행
             userReviewService.createUserReview(
-                    buildRequest(DEFAULT_SAVED.getTrackName(), DEFAULT_SAVED.getArtistName(), DEFAULT_SAVED.getReviewContent()));
+                    buildRequest(DEFAULT_SAVED.getAlbumName(), DEFAULT_SAVED.getArtistName(), DEFAULT_SAVED.getReviewContent()));
 
             // then: save()에 실제로 넘어간 객체를 꺼내어 @Builder.Default 기본값 검증
             verify(userReviewRepository).save(reviewCaptor.capture()); // save() 호출 확인 + 인자 캡처
@@ -156,7 +156,7 @@ class UserReviewServiceTest {
             // then: UserReviewSummaryResponse로 변환되었는지 검증
             assertThat(result.getContent()).hasSize(1);
             assertThat(result.getContent().get(0).getId()).isEqualTo(DEFAULT_SAVED.getId());
-            assertThat(result.getContent().get(0).getTrackName()).isEqualTo(DEFAULT_SAVED.getTrackName());
+            assertThat(result.getContent().get(0).getAlbumName()).isEqualTo(DEFAULT_SAVED.getAlbumName());
         }
     }
 
@@ -172,7 +172,7 @@ class UserReviewServiceTest {
         void getById_completed_returnsRecommendations() {
             // given: COMPLETED 상태 리뷰 + 추천 앨범 1건
             UserReview completed = UserReview.builder()
-                    .id(1).trackName("So What").artistName("Miles Davis")
+                    .id(1).albumName("So What").artistName("Miles Davis")
                     .reviewContent("명반").isPublic(true)
                     .recommendationStatus(RecommendationStatus.COMPLETED)
                     .build();
@@ -210,7 +210,7 @@ class UserReviewServiceTest {
         @DisplayName("FAILED — 실패 응답, 이벤트 재발행 안 함")
         void getById_failed_noEventPublished() {
             UserReview failed = UserReview.builder()
-                    .id(1).trackName("So What").artistName("Miles Davis")
+                    .id(1).albumName("So What").artistName("Miles Davis")
                     .reviewContent("명반").isPublic(true)
                     .recommendationStatus(RecommendationStatus.FAILED)
                     .build();
@@ -248,7 +248,7 @@ class UserReviewServiceTest {
         void retry_failed_changesPendingAndPublishesEvent() {
             // given: FAILED 상태 리뷰
             UserReview failed = UserReview.builder()
-                    .id(1).trackName("So What").artistName("Miles Davis")
+                    .id(1).albumName("So What").artistName("Miles Davis")
                     .reviewContent("명반").isPublic(true)
                     .recommendationStatus(RecommendationStatus.FAILED)
                     .build();
@@ -278,7 +278,7 @@ class UserReviewServiceTest {
     // ────────────────────────────────────────────────
     private UserReviewRequest buildRequest(String track, String artist, String content) {
         return UserReviewRequest.builder()
-                .trackName(track)
+                .albumName(track)
                 .artistName(artist)
                 .reviewContent(content)
                 .build();

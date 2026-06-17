@@ -30,7 +30,7 @@ public class UserReviewService {
     @Transactional
     public UserReviewCreateResponse createUserReview(UserReviewRequest request) {
         UserReview review = UserReview.builder()
-                .trackName(request.getTrackName())
+                .albumName(request.getAlbumName())
                 .artistName(request.getArtistName())
                 .reviewContent(request.getReviewContent())
                 .rating(request.getRating())

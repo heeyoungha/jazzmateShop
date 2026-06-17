@@ -40,7 +40,7 @@ class GlobalExceptionHandlerTest {
     @DisplayName("@Valid 실패 → 400, success=false, message 존재")
     void validationError_returns400() throws Exception {
         String body = objectMapper.writeValueAsString(Map.of(
-                "trackName", "",           // @NotBlank 위반
+                "albumName", "",           // @NotBlank 위반
                 "artistName", "Miles Davis",
                 "reviewContent", "재즈의 정수"
         ));
@@ -72,7 +72,7 @@ class GlobalExceptionHandlerTest {
                 .willThrow(new RuntimeException("예상치 못한 오류"));
 
         String body = objectMapper.writeValueAsString(Map.of(
-                "trackName", "So What",
+                "albumName", "Kind of Blue",
                 "artistName", "Miles Davis",
                 "reviewContent", "재즈의 정수"
         ));

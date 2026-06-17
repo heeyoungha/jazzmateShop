@@ -52,7 +52,7 @@ class UserReviewRepositoryTest {
                     .findByIsPublicTrueOrderByCreatedAtDesc(pageable);
 
             assertThat(result.getContent()).hasSize(1);
-            assertThat(result.getContent().get(0).getTrackName()).isEqualTo("So What");
+            assertThat(result.getContent().get(0).getAlbumName()).isEqualTo("So What");
         }
 
         @Test
@@ -65,8 +65,8 @@ class UserReviewRepositoryTest {
             Page<UserReview> result = userReviewRepository
                     .findByIsPublicTrueOrderByCreatedAtDesc(PageRequest.of(0, 10));
 
-            assertThat(result.getContent().get(0).getTrackName()).isEqualTo("Second");
-            assertThat(result.getContent().get(1).getTrackName()).isEqualTo("First");
+            assertThat(result.getContent().get(0).getAlbumName()).isEqualTo("Second");
+            assertThat(result.getContent().get(1).getAlbumName()).isEqualTo("First");
         }
 
         @Test
@@ -123,7 +123,7 @@ class UserReviewRepositoryTest {
     private UserReview save(String track, String artist, String content,
                             boolean isPublic, String userId) {
         UserReview review = UserReview.builder()
-                .trackName(track)
+                .albumName(track)
                 .artistName(artist)
                 .reviewContent(content)
                 .isPublic(isPublic)
