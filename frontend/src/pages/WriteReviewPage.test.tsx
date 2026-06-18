@@ -19,7 +19,7 @@ function renderWriteReviewPage() {
 }
 
 async function fillRequiredFields(user: ReturnType<typeof userEvent.setup>) {
-  await user.type(screen.getByLabelText("곡명"), "So What");
+  await user.type(screen.getByLabelText("앨범명"), "Kind of Blue");
   await user.type(screen.getByLabelText("아티스트"), "Miles Davis");
   await user.type(
     screen.getByLabelText("감상문"),
@@ -38,9 +38,9 @@ describe("WriteReviewPage", () => {
     renderWriteReviewPage();
 
     await fillRequiredFields(user);
-    await user.click(screen.getByRole("button", { name: "저장" }));
+    await user.click(screen.getByRole("button", { name: "감상문 저장하기" }));
 
-    expect(screen.getByRole("button", { name: "저장 중" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "저장 중..." })).toBeDisabled();
   });
 
   it("제출 성공 시 추천 페이지로 이동한다", async () => {
@@ -48,7 +48,7 @@ describe("WriteReviewPage", () => {
     renderWriteReviewPage();
 
     await fillRequiredFields(user);
-    await user.click(screen.getByRole("button", { name: "저장" }));
+    await user.click(screen.getByRole("button", { name: "감상문 저장하기" }));
 
     expect(await screen.findByText("추천 페이지")).toBeInTheDocument();
     expect(requestLog.createReview).toBe(1);
@@ -58,7 +58,7 @@ describe("WriteReviewPage", () => {
     server.use(
       http.post("/api/user-reviews", () =>
         HttpResponse.json(
-          { success: false, message: "trackName은 필수입니다." },
+          { success: false, message: "albumName은 필수입니다." },
           { status: 400 },
         ),
       ),
@@ -67,10 +67,10 @@ describe("WriteReviewPage", () => {
     renderWriteReviewPage();
 
     await fillRequiredFields(user);
-    await user.click(screen.getByRole("button", { name: "저장" }));
+    await user.click(screen.getByRole("button", { name: "감상문 저장하기" }));
 
     expect(
-      await screen.findByText("trackName은 필수입니다."),
+      await screen.findByText("albumName은 필수입니다."),
     ).toBeInTheDocument();
   });
 
@@ -87,7 +87,7 @@ describe("WriteReviewPage", () => {
     renderWriteReviewPage();
 
     await fillRequiredFields(user);
-    await user.click(screen.getByRole("button", { name: "저장" }));
+    await user.click(screen.getByRole("button", { name: "감상문 저장하기" }));
 
     await waitFor(() => {
       expect(screen.getByText("서버 오류가 발생했습니다.")).toBeInTheDocument();
@@ -100,10 +100,103 @@ describe("WriteReviewPage", () => {
     renderWriteReviewPage();
 
     await fillRequiredFields(user);
-    await user.click(screen.getByRole("button", { name: "저장" }));
+    await user.click(screen.getByRole("button", { name: "감상문 저장하기" }));
 
     expect(
       await screen.findByText("감상문 저장 중 오류가 발생했습니다."),
     ).toBeInTheDocument();
+  });
+
+  it("2. 앨범명을 입력하면 MusicBrainz 후보를 표시하고 선택할 수 있다", async () => {
+    server.use(
+      http.get("/api/musicbrainz/albums/search", () =>
+        HttpResponse.json([
+          {
+            gid: "20000000-0000-0000-0000-000000000001",
+            name: "Kind of Blue",
+            artistName: "Miles Davis",
+            firstReleaseYear: 1959,
+            coverArtUrl: "https://cover.example/kind-of-blue",
+          },
+        ]),
+      ),
+    );
+    const user = userEvent.setup();
+    renderWriteReviewPage();
+
+    await user.type(screen.getByLabelText("앨범명"), "Kind of Blue");
+
+    const option = await screen.findByRole("button", {
+      name: /Kind of Blue.*Miles Davis.*1959/,
+    });
+    await user.click(option);
+
+    expect(screen.getByLabelText("앨범명")).toHaveValue("Kind of Blue");
+    expect(screen.getByLabelText("아티스트")).toHaveValue("Miles Davis");
+  });
+
+  it("3. 선택한 앨범 gid를 감상문 생성 요청에 포함한다", async () => {
+    let requestBody: Record<string, unknown> | undefined;
+    server.use(
+      http.get("/api/musicbrainz/albums/search", () =>
+        HttpResponse.json([
+          {
+            gid: "20000000-0000-0000-0000-000000000001",
+            name: "Kind of Blue",
+            artistName: "Miles Davis",
+            firstReleaseYear: 1959,
+            coverArtUrl: null,
+          },
+        ]),
+      ),
+      http.post("/api/user-reviews", async ({ request }) => {
+        requestBody = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json({
+          success: true,
+          message: "감상문이 저장되었습니다.",
+          data: { id: 1 },
+        });
+      }),
+    );
+    const user = userEvent.setup();
+    renderWriteReviewPage();
+
+    await user.type(screen.getByLabelText("앨범명"), "Kind of Blue");
+    await user.click(
+      await screen.findByRole("button", { name: /Kind of Blue.*Miles Davis/ }),
+    );
+    await user.type(
+      screen.getByLabelText("감상문"),
+      "고요한 여백이 오래 남는다.",
+    );
+    await user.click(screen.getByRole("button", { name: "감상문 저장하기" }));
+
+    await waitFor(() =>
+      expect(requestBody?.mbAlbumGid).toBe(
+        "20000000-0000-0000-0000-000000000001",
+      ),
+    );
+  });
+
+  it("4. 앨범을 선택하지 않으면 mbAlbumGid를 null로 전송한다", async () => {
+    let requestBody: Record<string, unknown> | undefined;
+    server.use(
+      http.get("/api/musicbrainz/albums/search", () => HttpResponse.json([])),
+      http.post("/api/user-reviews", async ({ request }) => {
+        requestBody = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json({
+          success: true,
+          message: "감상문이 저장되었습니다.",
+          data: { id: 1 },
+        });
+      }),
+    );
+    const user = userEvent.setup();
+    renderWriteReviewPage();
+
+    await fillRequiredFields(user);
+    await user.click(screen.getByRole("button", { name: "감상문 저장하기" }));
+
+    await waitFor(() => expect(requestBody?.mbAlbumGid).toBeNull());
   });
 });

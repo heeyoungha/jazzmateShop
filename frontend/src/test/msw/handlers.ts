@@ -27,20 +27,26 @@ export const requestLog = {
 };
 
 // 감상문 목록을 첫 페이지부터 마지막 페이지로 강제하는 테스트용 핸들러.
-export const lastUserReviewsPageHandler = http.get("/api/user-reviews", ({ request }) => {
-  const searchParams = new URL(request.url).searchParams;
-  const page = Number(searchParams.get("page") ?? 0);
-  const size = Number(searchParams.get("size") ?? 0);
-  requestLog.userReviewPages.push(page);
-  return HttpResponse.json(userReviewPage({ number: page, last: true }));
-});
+export const lastUserReviewsPageHandler = http.get(
+  "/api/user-reviews",
+  ({ request }) => {
+    const searchParams = new URL(request.url).searchParams;
+    const page = Number(searchParams.get("page") ?? 0);
+    const size = Number(searchParams.get("size") ?? 0);
+    requestLog.userReviewPages.push(page);
+    return HttpResponse.json(userReviewPage({ number: page, last: true }));
+  },
+);
 
 // 전문가 리뷰 목록을 첫 페이지부터 마지막 페이지로 강제하는 테스트용 핸들러.
-export const lastCriticsPageHandler = http.get("/api/critics", ({ request }) => {
-  const page = Number(new URL(request.url).searchParams.get("page") ?? 0);
-  requestLog.criticsPages.push(page);
-  return HttpResponse.json(criticsPage({ number: page, last: true }));
-});
+export const lastCriticsPageHandler = http.get(
+  "/api/critics",
+  ({ request }) => {
+    const page = Number(new URL(request.url).searchParams.get("page") ?? 0);
+    requestLog.criticsPages.push(page);
+    return HttpResponse.json(criticsPage({ number: page, last: true }));
+  },
+);
 
 export const defaultHandlers = [
   http.post("/api/user-reviews", async () => {
@@ -89,6 +95,9 @@ export const defaultHandlers = [
     requestLog.criticsDetail += 1;
     return HttpResponse.json(criticsDetail);
   }),
+
+  // 기본 MusicBrainz 앨범 검색 핸들러: 빈 결과 반환
+  http.get("/api/musicbrainz/albums/search", () => HttpResponse.json([])),
 ];
 
 export const pendingThenCompletedHandler = http.get(

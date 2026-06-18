@@ -7,7 +7,7 @@ import { getRecommendationPollingInterval as getPollingDelay } from "../config/p
 
 interface ReviewDetail {
   id: number;
-  trackName: string;
+  albumName: string;
   artistName: string;
   reviewContent: string;
 }
@@ -250,7 +250,7 @@ export function ReviewBasedRecommendPage() {
           <div className="flex items-center gap-4 text-sm text-gray-700">
             <span className="flex items-center gap-1.5 font-semibold">
               <Music className="w-4 h-4 text-gray-400" />
-              {data.review.trackName}
+              {data.review.albumName}
             </span>
             <span className="flex items-center gap-1.5 text-gray-500">
               <User className="w-4 h-4 text-gray-400" />

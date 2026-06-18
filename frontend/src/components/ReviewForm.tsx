@@ -1,10 +1,19 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Music, User, FileText, Star, Zap, Mic, Music2 } from "lucide-react";
 
+interface MusicBrainzAlbumCandidate {
+  gid: string;
+  name: string;
+  artistName: string;
+  firstReleaseYear: number | null;
+  coverArtUrl: string | null;
+}
+
 export interface ReviewFormData {
-  trackName: string;
+  albumName: string;
   artistName: string;
   reviewContent: string;
+  mbAlbumGid: string | null;
   rating?: number;
   mood?: string;
   genre?: string;
@@ -21,10 +30,81 @@ interface ReviewFormProps {
   error?: string;
 }
 
+function Field({
+  id,
+  label,
+  icon: Icon,
+  error: fieldError,
+  children,
+}: {
+  id: string;
+  label: string;
+  icon?: React.ElementType;
+  error?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <label
+        htmlFor={id}
+        className="flex items-center gap-1.5 text-sm font-medium text-gray-700"
+      >
+        {Icon && <Icon className="w-4 h-4 text-gray-400" />}
+        {label}
+      </label>
+      {children}
+      {fieldError && <p className="text-xs text-red-500">{fieldError}</p>}
+    </div>
+  );
+}
+
 export function ReviewForm({ onSubmit, submitting, error }: ReviewFormProps) {
   const [validationErrors, setValidationErrors] = useState<
     Record<string, string>
   >({});
+  const [albumName, setAlbumName] = useState("");
+  const [artistName, setArtistName] = useState("");
+  const [candidates, setCandidates] = useState<MusicBrainzAlbumCandidate[]>([]);
+  const [searchStatus, setSearchStatus] = useState<"idle" | "empty" | "error">(
+    "idle",
+  );
+  const [selectedGid, setSelectedGid] = useState<string | null>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (!albumName) {
+      setCandidates([]);
+      setSearchStatus("idle");
+      return;
+    }
+    debounceRef.current = setTimeout(async () => {
+      try {
+        const params = new URLSearchParams({ albumName, artistName });
+        const res = await fetch(`/api/musicbrainz/albums/search?${params}`);
+        if (res.ok) {
+          const data: MusicBrainzAlbumCandidate[] = await res.json();
+          setCandidates(data);
+          setSearchStatus(data.length === 0 ? "empty" : "idle");
+        } else {
+          setSearchStatus("error");
+        }
+      } catch {
+        setSearchStatus("error");
+      }
+    }, 300);
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [albumName, artistName]);
+
+  function handleSelectCandidate(candidate: MusicBrainzAlbumCandidate) {
+    setAlbumName(candidate.name);
+    setArtistName(candidate.artistName);
+    setSelectedGid(candidate.gid);
+    setCandidates([]);
+    setSearchStatus("idle");
+  }
 
   function getText(formData: FormData, name: string) {
     return String(formData.get(name) ?? "").trim();
@@ -39,10 +119,10 @@ export function ReviewForm({ onSubmit, submitting, error }: ReviewFormProps) {
   }
 
   function validate(
-    data: Pick<ReviewFormData, "trackName" | "artistName" | "reviewContent">,
+    data: Pick<ReviewFormData, "albumName" | "artistName" | "reviewContent">,
   ) {
     const errors: Record<string, string> = {};
-    if (!data.trackName) errors.trackName = "곡명은 필수입니다.";
+    if (!data.albumName) errors.albumName = "앨범명은 필수입니다.";
     if (!data.artistName) errors.artistName = "아티스트는 필수입니다.";
     if (!data.reviewContent) errors.reviewContent = "감상문은 필수입니다.";
     return errors;
@@ -52,8 +132,8 @@ export function ReviewForm({ onSubmit, submitting, error }: ReviewFormProps) {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
     const requiredData = {
-      trackName: getText(formData, "trackName"),
-      artistName: getText(formData, "artistName"),
+      albumName: albumName.trim(),
+      artistName: artistName.trim(),
       reviewContent: getText(formData, "reviewContent"),
     };
     const errors = validate(requiredData);
@@ -75,6 +155,7 @@ export function ReviewForm({ onSubmit, submitting, error }: ReviewFormProps) {
 
     const data: ReviewFormData = {
       ...requiredData,
+      mbAlbumGid: selectedGid,
       isPublic: formData.get("isPublic") === "on",
       ...(rating !== undefined && { rating }),
       ...(mood && { mood }),
@@ -91,34 +172,6 @@ export function ReviewForm({ onSubmit, submitting, error }: ReviewFormProps) {
   const inputClass =
     "w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition";
 
-  function Field({
-    id,
-    label,
-    icon: Icon,
-    error: fieldError,
-    children,
-  }: {
-    id: string;
-    label: string;
-    icon?: React.ElementType;
-    error?: string;
-    children: React.ReactNode;
-  }) {
-    return (
-      <div className="space-y-1.5">
-        <label
-          htmlFor={id}
-          className="flex items-center gap-1.5 text-sm font-medium text-gray-700"
-        >
-          {Icon && <Icon className="w-4 h-4 text-gray-400" />}
-          {label}
-        </label>
-        {children}
-        {fieldError && <p className="text-xs text-red-500">{fieldError}</p>}
-      </div>
-    );
-  }
-
   return (
     <form onSubmit={handleSubmit} className="space-y-8">
       {/* 필수 항목 */}
@@ -128,17 +181,53 @@ export function ReviewForm({ onSubmit, submitting, error }: ReviewFormProps) {
         </h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Field
-            id="trackName"
-            label="곡명"
+            id="albumName"
+            label="앨범명"
             icon={Music}
-            error={validationErrors.trackName}
+            error={validationErrors.albumName}
           >
-            <input
-              id="trackName"
-              name="trackName"
-              placeholder="예) So What"
-              className={inputClass}
-            />
+            <div className="relative">
+              <input
+                id="albumName"
+                name="albumName"
+                placeholder="예) Kind of Blue"
+                className={inputClass}
+                value={albumName}
+                onChange={(e) => {
+                  setAlbumName(e.target.value);
+                  setSelectedGid(null);
+                }}
+                autoComplete="off"
+              />
+              {(candidates.length > 0 ||
+                searchStatus === "empty" ||
+                searchStatus === "error") && (
+                <ul className="absolute z-10 mt-1 w-full rounded-lg border border-gray-200 bg-white shadow-lg">
+                  {searchStatus === "empty" && (
+                    <li className="px-3 py-2 text-sm text-gray-400">
+                      검색된 앨범이 없습니다.
+                    </li>
+                  )}
+                  {searchStatus === "error" && (
+                    <li className="px-3 py-2 text-sm text-red-400">
+                      앨범 검색에 실패했습니다.
+                    </li>
+                  )}
+                  {candidates.map((c) => (
+                    <li key={c.gid}>
+                      <button
+                        type="button"
+                        className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50"
+                        onClick={() => handleSelectCandidate(c)}
+                      >
+                        {c.name} — {c.artistName}
+                        {c.firstReleaseYear ? ` (${c.firstReleaseYear})` : ""}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
           </Field>
           <Field
             id="artistName"
@@ -151,6 +240,8 @@ export function ReviewForm({ onSubmit, submitting, error }: ReviewFormProps) {
               name="artistName"
               placeholder="예) Miles Davis"
               className={inputClass}
+              value={artistName}
+              onChange={(e) => setArtistName(e.target.value)}
             />
           </Field>
         </div>

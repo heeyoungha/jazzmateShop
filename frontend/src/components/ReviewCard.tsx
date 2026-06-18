@@ -2,7 +2,7 @@ import { Music, User, Star, Calendar } from "lucide-react";
 
 interface Review {
   id: number;
-  trackName: string;
+  albumName: string;
   artistName: string;
   rating?: number;
   createdAt: string;
@@ -32,7 +32,7 @@ export function ReviewCard({ review, onClick }: ReviewCardProps) {
         <div className="space-y-1">
           <p className="flex items-center gap-1.5 font-semibold text-gray-900">
             <Music className="w-4 h-4 text-gray-400 shrink-0" />
-            {review.trackName}
+            {review.albumName}
           </p>
           <p className="flex items-center gap-1.5 text-sm text-gray-500">
             <User className="w-3.5 h-3.5 shrink-0" />

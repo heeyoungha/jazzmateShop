@@ -70,7 +70,7 @@ describe("ReviewBasedRecommendPage", () => {
     await advanceTimers(RECOMMENDATION_POLLING_INTERVAL_MS);
 
     // 기준 감상문
-    expect(screen.getByText(review.trackName)).toBeInTheDocument();
+    expect(screen.getByText(review.albumName)).toBeInTheDocument();
     expect(screen.getAllByText(review.artistName)).not.toHaveLength(0);
     expect(screen.getByText(review.reviewContent)).toBeInTheDocument();
     // 추천 곡 목록

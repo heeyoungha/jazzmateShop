@@ -57,7 +57,7 @@ describe("MyReviewsPage", () => {
     renderMyReviewsPage();
 
     expect(
-      await screen.findByText("작성한 감상문이 없습니다."),
+      await screen.findByText("아직 작성한 감상문이 없습니다."),
     ).toBeInTheDocument();
   });
 

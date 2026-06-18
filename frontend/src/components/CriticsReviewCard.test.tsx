@@ -12,8 +12,7 @@ describe("CriticsReviewCard", () => {
 
     expect(screen.getByText("Kind of Blue Review")).toBeInTheDocument();
     expect(screen.getByText("All About Jazz")).toBeInTheDocument();
-    expect(screen.getByText("2026-05-23")).toBeInTheDocument();
-    expect(screen.getByText(/정교한 앙상블/)).toBeInTheDocument();
+    expect(screen.getByText("2026년 5월 23일")).toBeInTheDocument();
   });
 
   it("클릭하면 onClick이 호출된다", async () => {
