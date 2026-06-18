@@ -7,6 +7,7 @@ import org.hibernate.annotations.UpdateTimestamp;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 @Entity
 @Table(name = "user_reviews")
@@ -24,6 +25,9 @@ public class UserReview {
 
     @Column(name = "user_id", length = 255)
     private String userId;
+
+    @Column(name = "mb_album_gid")
+    private UUID mbAlbumGid;
 
     @Column(name = "album_name", length = 255)
     private String albumName;

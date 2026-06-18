@@ -5,6 +5,7 @@ import lombok.Builder;
 import lombok.Getter;
 
 import java.math.BigDecimal;
+import java.util.UUID;
 
 @Getter
 @Builder
@@ -18,7 +19,11 @@ public class UserReviewRequest {
 
     @NotBlank
     private String reviewContent;
-
+    
+    // TODO: JWT 인증 구현 후 토큰에서 추출 예정
+    private String userId;
+    
+    private UUID mbAlbumGid;
     private BigDecimal rating;
     private String mood;
     private String genre;

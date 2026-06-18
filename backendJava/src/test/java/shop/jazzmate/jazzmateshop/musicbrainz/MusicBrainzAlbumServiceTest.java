@@ -8,7 +8,6 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import shop.jazzmate.jazzmateshop.musicbrainz.dto.MusicBrainzAlbumSearchResponse;
 import shop.jazzmate.jazzmateshop.musicbrainz.entity.MusicBrainzAlbum;
-import shop.jazzmate.jazzmateshop.musicbrainz.entity.MusicBrainzArtist;
 
 import java.util.List;
 import java.util.UUID;
@@ -29,13 +28,10 @@ class MusicBrainzAlbumServiceTest {
     @DisplayName("Repository 검색 결과를 화면용 앨범 후보 DTO로 변환한다")
     void search_mapsAlbumsToResponses() {
         UUID gid = UUID.fromString("20000000-0000-0000-0000-000000000001");
-        MusicBrainzArtist artist = MusicBrainzArtist.builder()
-                .name("Miles Davis")
-                .build();
         MusicBrainzAlbum album = MusicBrainzAlbum.builder()
                 .gid(gid)
                 .name("Kind of Blue")
-                .artist(artist)
+                .artistName("Miles Davis")
                 .firstReleaseYear(1959)
                 .coverArtUrl("https://cover.example/kind-of-blue")
                 .build();
