@@ -4,7 +4,7 @@ export const CRITICS_ID = "uuid-1234";
 export const review = {
   id: REVIEW_ID,
   userId: "user-123",
-  trackName: "So What",
+  albumName: "Kind of Blue",
   artistName: "Miles Davis",
   reviewContent: "처음 들었을 때의 그 고요함이 아직도 기억난다.",
   rating: 4.5,
@@ -58,11 +58,12 @@ export const failedReviewDetail = {
 };
 
 export function userReviewPage({ number = 0, last = false } = {}) {
+  const totalPages = last ? number + 1 : number + 2;
   return {
     content: [
       {
         id: REVIEW_ID + number,
-        trackName: number === 0 ? "So What" : "Blue in Green",
+        albumName: number === 0 ? "Kind of Blue" : "Blue Train",
         artistName: "Miles Davis",
         reviewContent: "처음 들었을 때의 그 고요함이 아직도 기억난다.",
         rating: 4.5,
@@ -71,11 +72,10 @@ export function userReviewPage({ number = 0, last = false } = {}) {
         createdAt: "2026-05-23T10:00:00",
       },
     ],
-    totalElements: last ? 2 : 15,
-    totalPages: last ? 2 : 3,
-    number,
-    size: 10,
-    last,
+    page: {
+      number,
+      totalPages,
+    },
   };
 }
 

@@ -32,7 +32,7 @@ describe("MyReviewsPage", () => {
   it("마운트 시 첫 페이지를 조회한다", async () => {
     renderMyReviewsPage();
 
-    await screen.findByText(firstReview.trackName);
+    await screen.findByText(firstReview.albumName);
 
     expect(requestLog.userReviewPages).toEqual([0]);
   });
@@ -40,7 +40,7 @@ describe("MyReviewsPage", () => {
   it("목록 응답 시 리뷰 카드가 렌더링된다", async () => {
     renderMyReviewsPage();
 
-    expect(await screen.findByText(firstReview.trackName)).toBeInTheDocument();
+    expect(await screen.findByText(firstReview.albumName)).toBeInTheDocument();
     expect(screen.getByText(firstReview.artistName)).toBeInTheDocument();
   });
 
@@ -49,11 +49,7 @@ describe("MyReviewsPage", () => {
       http.get("/api/user-reviews", () =>
         HttpResponse.json({
           content: [],
-          totalElements: 0,
-          totalPages: 0,
-          number: 0,
-          size: 10,
-          last: true,
+          page: { number: 0, totalPages: 0 },
         }),
       ),
     );
@@ -68,7 +64,7 @@ describe("MyReviewsPage", () => {
   it("마지막 페이지가 아닐 때 스크롤 하단 도달 시 다음 페이지를 조회한다", async () => {
     renderMyReviewsPage();
 
-    await screen.findByText(firstReview.trackName);
+    await screen.findByText(firstReview.albumName);
     scrollToBottom();
 
     await waitFor(() => expect(requestLog.userReviewPages).toEqual([0, 1]));
@@ -78,7 +74,7 @@ describe("MyReviewsPage", () => {
     server.use(lastUserReviewsPageHandler);
     renderMyReviewsPage();
 
-    await screen.findByText(firstReview.trackName);
+    await screen.findByText(firstReview.albumName);
     scrollToBottom();
 
     await new Promise((r) => setTimeout(r, 100));
@@ -88,18 +84,20 @@ describe("MyReviewsPage", () => {
   it("다음 페이지 조회 시 기존 목록에 이어서 추가된다", async () => {
     renderMyReviewsPage();
 
-    await screen.findByText(firstReview.trackName);
+    await screen.findByText(firstReview.albumName);
     scrollToBottom();
 
-    expect(await screen.findByText(secondReview.trackName)).toBeInTheDocument();
-    expect(screen.getByText(firstReview.trackName)).toBeInTheDocument();
+    expect(await screen.findByText(secondReview.albumName)).toBeInTheDocument();
+    expect(screen.getByText(firstReview.albumName)).toBeInTheDocument();
   });
 
   it("카드 클릭 시 AI 맞춤 추천 결과 페이지로 이동한다", async () => {
     const user = userEvent.setup();
     renderMyReviewsPage();
 
-    await user.click(await screen.findByRole("button", { name: /So What/ }));
+    await user.click(
+      await screen.findByRole("button", { name: /Kind of Blue/ }),
+    );
 
     expect(await screen.findByText("AI 맞춤 추천 결과")).toBeInTheDocument();
   });

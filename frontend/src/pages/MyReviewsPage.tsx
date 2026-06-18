@@ -6,7 +6,7 @@ import { getNextReviewPage } from "../lib/pagination";
 
 interface UserReview {
   id: number;
-  trackName: string;
+  albumName: string;
   artistName: string;
   reviewContent: string;
   rating?: number;
@@ -15,13 +15,17 @@ interface UserReview {
   createdAt: string;
 }
 
-interface PageResponse {
-  content: UserReview[];
+interface PageMeta {
   number: number;
-  last: boolean;
+  totalPages: number;
 }
 
-type PageCursor = Pick<PageResponse, "number" | "last">;
+interface PageResponse {
+  content: UserReview[];
+  page: PageMeta;
+}
+
+type PageCursor = PageMeta & { last: boolean };
 const PAGE_SIZE = 10;
 
 export function MyReviewsPage() {
@@ -41,9 +45,10 @@ export function MyReviewsPage() {
         `/api/user-reviews?page=${pageNum}&size=${PAGE_SIZE}`,
       );
       const json: PageResponse = await res.json();
+      const { number, totalPages } = json.page;
 
       setReviews((prev) => [...prev, ...json.content]);
-      setCursor({ number: json.number, last: json.last });
+      setCursor({ number, totalPages, last: number >= totalPages - 1 });
     } finally {
       loadingRef.current = false;
     }
