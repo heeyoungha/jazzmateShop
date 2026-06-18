@@ -25,6 +25,7 @@ import shop.jazzmate.jazzmateshop.userReview.entity.UserReview;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
@@ -115,6 +116,53 @@ class UserReviewServiceTest {
             RecommendationRequestEvent event = captor.getValue();
             assertThat(event.reviewId()).isEqualTo(DEFAULT_SAVED.getId());
             assertThat(event.reviewContent()).isEqualTo(DEFAULT_SAVED.getReviewContent());
+        }
+
+        @Test
+        @DisplayName("Request의 필수 필드(albumName, artistName, reviewContent, userId, mbAlbumGid)가 엔티티에 저장된다")
+        void create_persistsAllRequiredFields() {
+            // given: 필수 필드가 모두 포함된 감상문 요청
+            UUID mbAlbumGid = UUID.fromString("20000000-0000-0000-0000-000000000001");
+            UserReviewRequest request = UserReviewRequest.builder()
+                    .userId("1")
+                    .albumName("Kind of Blue")
+                    .artistName("Miles Davis")
+                    .mbAlbumGid(mbAlbumGid)
+                    .reviewContent("차분한 공간감이 인상적이다.")
+                    .build();
+            ArgumentCaptor<UserReview> captor = ArgumentCaptor.forClass(UserReview.class);
+
+            // when: 리뷰 생성 요청 실행
+            userReviewService.createUserReview(request);
+
+            // then: 저장 엔티티에 필수 필드가 모두 매핑되었는지 검증
+            verify(userReviewRepository).save(captor.capture());
+            assertThat(captor.getValue().getUserId()).isEqualTo("1");
+            assertThat(captor.getValue().getMbAlbumGid()).isEqualTo(mbAlbumGid);
+            assertThat(captor.getValue().getArtistName()).isEqualTo("Miles Davis");
+            assertThat(captor.getValue().getAlbumName()).isEqualTo("Kind of Blue");
+            assertThat(captor.getValue().getReviewContent()).isEqualTo("차분한 공간감이 인상적이다.");
+        }
+
+        @Test
+        @DisplayName("앨범을 선택하지 않으면 mbAlbumGid를 null로 저장한다")
+        void create_withoutAlbumSelection_persistsNullMbAlbumGid() {
+            // given: 앨범을 선택하지 않은 감상문 요청
+            UserReviewRequest request = UserReviewRequest.builder()
+                    .userId("1")
+                    .albumName("Unknown Album")
+                    .artistName("Unknown Artist")
+                    .mbAlbumGid(null)
+                    .reviewContent("직접 입력한 앨범 감상문")
+                    .build();
+            ArgumentCaptor<UserReview> captor = ArgumentCaptor.forClass(UserReview.class);
+
+            // when: 리뷰 생성 요청 실행
+            userReviewService.createUserReview(request);
+
+            // then: 저장 엔티티의 mbAlbumGid가 null인지 검증
+            verify(userReviewRepository).save(captor.capture());
+            assertThat(captor.getValue().getMbAlbumGid()).isNull();
         }
 
         @Test
