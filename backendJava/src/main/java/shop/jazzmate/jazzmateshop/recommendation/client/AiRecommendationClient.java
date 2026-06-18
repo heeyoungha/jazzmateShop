@@ -4,9 +4,11 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
+import java.net.http.HttpClient;
 import java.util.Map;
 
 @Component
@@ -16,8 +18,12 @@ public class AiRecommendationClient {
     private final RestClient restClient;
 
     public AiRecommendationClient(@Value("${fastapi.base-url}") String fastapiBaseUrl) {
+        HttpClient httpClient = HttpClient.newBuilder()
+                .version(HttpClient.Version.HTTP_1_1)
+                .build();
         this.restClient = RestClient.builder()
                 .baseUrl(fastapiBaseUrl)
+                .requestFactory(new JdkClientHttpRequestFactory(httpClient))
                 .build();
     }
 
