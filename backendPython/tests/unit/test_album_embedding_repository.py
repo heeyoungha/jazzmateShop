@@ -5,6 +5,7 @@ from app.core.exceptions import ConfigurationError, RepositoryError
 from app.repositories.album_embedding_repository import AlbumEmbeddingRepository
 
 
+# Supabase Python 클라이언트의 메서드 체이닝을 대체한다
 class FakeQuery:
     def __init__(self, rows=None, error=None):
         self.rows = rows or []
@@ -33,6 +34,7 @@ class FakeQuery:
         return type("Response", (), {"data": self.rows})()
 
 
+# Supabase DB 클라이언트를 대체한다
 class FakeDatabaseClient:
     def __init__(self, query):
         self.query = query
@@ -47,6 +49,7 @@ class FakeDatabaseClient:
 
 def test_album_embedding_repository_requires_database_client():
     """DB client 없이 Repository를 생성하면 설정 누락 예외가 발생한다."""
+    # given / when / then
     with pytest.raises(ConfigurationError, match="database client"):
         AlbumEmbeddingRepository(database=None)
 
@@ -54,6 +57,7 @@ def test_album_embedding_repository_requires_database_client():
 @pytest.mark.asyncio
 async def test_find_similar_albums_returns_top_k_by_similarity():
     """유사도 DESC 정렬 후 최대 K건을 반환한다."""
+    # given
     rows = [
         {"album_id": "3", "similarity": 0.80},
         {"album_id": "1", "similarity": 0.98},
@@ -61,8 +65,10 @@ async def test_find_similar_albums_returns_top_k_by_similarity():
     ]
     repository = AlbumEmbeddingRepository(database=FakeDatabaseClient(FakeQuery(rows)))
 
+    # when
     result = await repository.find_similar_albums([0.1] * settings.EMBEDDING_DIMENSIONS, top_k=2)
 
+    # then
     assert [candidate.album_id for candidate in result] == ["1", "2"]
     assert len(result) == 2
 
@@ -70,11 +76,14 @@ async def test_find_similar_albums_returns_top_k_by_similarity():
 @pytest.mark.asyncio
 async def test_find_similar_albums_queries_embedding_with_album_view():
     """조회 대상은 v_embedding_with_album으로 고정된다."""
+    # given
     query = FakeQuery([])
     repository = AlbumEmbeddingRepository(database=FakeDatabaseClient(query))
 
+    # when
     await repository.find_similar_albums([0.1] * settings.EMBEDDING_DIMENSIONS, top_k=3)
 
+    # then
     rpc_calls = [call for call in query.calls if call[0] == "rpc"]
     assert len(rpc_calls) == 1
     assert rpc_calls[0][1] == "match_albums"
@@ -83,17 +92,21 @@ async def test_find_similar_albums_queries_embedding_with_album_view():
 @pytest.mark.asyncio
 async def test_find_similar_albums_no_rows_returns_empty_list():
     """후보가 없으면 빈 리스트를 반환한다."""
+    # given
     repository = AlbumEmbeddingRepository(database=FakeDatabaseClient(FakeQuery([])))
 
+    # when / then
     assert await repository.find_similar_albums([0.1] * settings.EMBEDDING_DIMENSIONS, top_k=3) == []
 
 
 @pytest.mark.asyncio
 async def test_find_similar_albums_db_failure_raises_repository_error():
     """DB 조회 실패 시 RepositoryError로 변환한다."""
+    # given
     repository = AlbumEmbeddingRepository(
         database=FakeDatabaseClient(FakeQuery(error=RuntimeError("db down")))
     )
 
+    # when / then
     with pytest.raises(RepositoryError):
         await repository.find_similar_albums([0.1] * settings.EMBEDDING_DIMENSIONS, top_k=3)

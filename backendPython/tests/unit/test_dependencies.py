@@ -6,6 +6,7 @@ from app.api.dependencies import get_recommendation_service
 from app.core.exceptions import ConfigurationError
 
 
+# app.state에 주입되는 각 클라이언트를 대체한다
 class FakeDatabaseClient:
     pass
 
@@ -52,6 +53,7 @@ def make_request(
 
 def test_get_recommendation_service_uses_app_state_resources():
     """dependency provider는 app.state 리소스를 협력 객체에 주입한다."""
+    # given
     database = FakeDatabaseClient()
     embedding_client = FakeOpenAiClient()
     chat_client = FakeOpenAiClient()
@@ -63,8 +65,10 @@ def test_get_recommendation_service_uses_app_state_resources():
         spring_http_client=http_client,
     )
 
+    # when
     service = get_recommendation_service(request)
 
+    # then
     assert service.album_embedding_repository.database is database
     assert service.embedding_service.openai_client is embedding_client
     assert service.recommendation_reason_service.openai_client is chat_client
@@ -84,8 +88,10 @@ def test_get_recommendation_service_missing_resource_raises_configuration_error(
     resource_name,
 ):
     """필수 app.state 리소스가 없으면 설정 누락 예외가 발생한다."""
+    # given
     request = make_request(**{resource_name: MISSING})
 
+    # when / then
     with pytest.raises(ConfigurationError, match=f"app.state.{resource_name}"):
         get_recommendation_service(request)
 
@@ -103,7 +109,9 @@ def test_get_recommendation_service_none_resource_raises_configuration_error(
     resource_name,
 ):
     """필수 app.state 리소스가 None이면 설정 누락 예외가 발생한다."""
+    # given
     request = make_request(**{resource_name: None})
 
+    # when / then
     with pytest.raises(ConfigurationError, match=f"app.state.{resource_name}"):
         get_recommendation_service(request)

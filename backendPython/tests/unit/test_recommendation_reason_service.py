@@ -10,6 +10,7 @@ from app.services.recommendation_reason_service import RecommendationReasonServi
 from tests.fixtures import ALBUM_ID_1, ALBUM_ID_2, REVIEW_CONTENT, make_candidate
 
 
+# OpenAI chat.completions.create() 호출을 대체한다
 class FakeChatCompletions:
     def __init__(self, content="추천 사유입니다.", error=None, delay=0):
         self.content = content
@@ -39,6 +40,7 @@ class FakeChatCompletions:
             self.active_count -= 1
 
 
+# OpenAI 클라이언트를 대체한다
 class FakeOpenAiClient:
     def __init__(self, completions):
         self.chat = SimpleNamespace(completions=completions)
@@ -46,6 +48,7 @@ class FakeOpenAiClient:
 
 def test_recommendation_reason_service_requires_open_ai_client():
     """운영 조립 경로에서 OpenAI client 누락은 설정 오류로 실패한다."""
+    # given / when / then
     with pytest.raises(ConfigurationError, match="openai client"):
         RecommendationReasonService(openai_client=None)
 
@@ -53,49 +56,60 @@ def test_recommendation_reason_service_requires_open_ai_client():
 @pytest.mark.asyncio
 async def test_generate_reasons_success_returns_reason_per_album():
     """후보 앨범의 개수만큼 추천 사유를 생성해 반환한다."""
+    # given
     service = RecommendationReasonService(
         openai_client=FakeOpenAiClient(FakeChatCompletions("차분한 분위기가 잘 맞습니다."))
     )
     candidates = [make_candidate(ALBUM_ID_1), make_candidate(ALBUM_ID_2)]
 
+    # when
     result = await service.generate_reasons(REVIEW_CONTENT, candidates)
 
+    # then
     assert len(result) == 2
     assert all(reason.recommendation_reason for reason in result)
-
 
 
 @pytest.mark.asyncio
 async def test_generate_reasons_uses_configured_open_ai_client():
     """설정된 OPENAI_CHAT_MODEL로 OpenAI SDK를 호출한다."""
+    # given
     completions = FakeChatCompletions("추천 사유입니다.")
     service = RecommendationReasonService(openai_client=FakeOpenAiClient(completions))
 
+    # when
     await service.generate_reasons(REVIEW_CONTENT, [make_candidate()])
 
+    # then
     assert completions.calls[0]["model"] == settings.OPENAI_CHAT_MODEL
 
 
 @pytest.mark.asyncio
 async def test_generate_reasons_multiple_candidates_runs_concurrently():
     """여러 후보의 추천 사유를 async로 병렬 생성한다."""
+    # given
     completions = FakeChatCompletions("추천 사유입니다.", delay=0.05)
     service = RecommendationReasonService(openai_client=FakeOpenAiClient(completions))
     candidates = [make_candidate(ALBUM_ID_1), make_candidate(ALBUM_ID_2)]
 
+    # when
     await service.generate_reasons(REVIEW_CONTENT, candidates)
 
+    # then
     assert completions.max_active_count == 2
 
 
 @pytest.mark.asyncio
 async def test_generate_reasons_builds_prompt_with_review_context():
     """프롬프트에 사용자 감상문, 앨범 정보, 리뷰 원문/요약을 포함한다."""
+    # given
     completions = FakeChatCompletions("추천 사유입니다.")
     service = RecommendationReasonService(openai_client=FakeOpenAiClient(completions))
 
+    # when
     await service.generate_reasons(REVIEW_CONTENT, [make_candidate()])
 
+    # then
     prompt = str(completions.calls[0]["messages"])
     # make_candidate()의 review_content참고
     assert REVIEW_CONTENT in prompt
@@ -107,12 +121,15 @@ async def test_generate_reasons_builds_prompt_with_review_context():
 @pytest.mark.asyncio
 async def test_generate_reasons_open_ai_failure_returns_fallback_reason():
     """OpenAI Chat 실패 시 fallback 추천 사유를 반환한다."""
+    # given
     service = RecommendationReasonService(
         openai_client=FakeOpenAiClient(FakeChatCompletions(error=RuntimeError("llm down")))
     )
 
+    # when
     result = await service.generate_reasons(REVIEW_CONTENT, [make_candidate()])
 
+    # then
     assert result[0].recommendation_reason # 값이 존재
     assert "추천" in result[0].recommendation_reason # fallback 사유에 추천이라는 단어가 있는 문장
 
@@ -120,24 +137,29 @@ async def test_generate_reasons_open_ai_failure_returns_fallback_reason():
 @pytest.mark.asyncio
 async def test_generate_reasons_empty_response_returns_fallback_reason():
     """빈 LLM 응답 시 fallback 추천 사유를 반환한다."""
+    # given
     service = RecommendationReasonService(
         openai_client=FakeOpenAiClient(FakeChatCompletions(""))
     )
 
+    # when
     result = await service.generate_reasons(REVIEW_CONTENT, [make_candidate()])
 
+    # then
     assert result[0].recommendation_reason
     assert "추천" in result[0].recommendation_reason
 
 
-
 def test_fallback_reason_common_keywords_mentions_shared_feature():
     """fallback 사유는 감상문과 후보 리뷰의 공통 음악 키워드를 반영한다."""
+    # given
     service = RecommendationReasonService(
         openai_client=FakeOpenAiClient(FakeChatCompletions())
     )
     candidate = make_candidate(review_summary="modal jazz와 차분한 분위기가 돋보입니다.")
 
+    # when
     reason = service.build_fallback_reason(REVIEW_CONTENT, candidate)
 
+    # then
     assert "차분" in reason or "modal" in reason or "모달" in reason

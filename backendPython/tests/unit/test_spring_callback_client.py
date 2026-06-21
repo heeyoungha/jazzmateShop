@@ -23,6 +23,7 @@ def make_item():
 
 def test_spring_callback_client_requires_http_client():
     """운영 조립 경로에서 HTTP client 누락은 설정 오류로 실패한다."""
+    # given / when / then
     with pytest.raises(ConfigurationError, match="http client"):
         SpringCallbackClient(
             base_url="https://spring.example.com",
@@ -33,6 +34,7 @@ def test_spring_callback_client_requires_http_client():
 @pytest.mark.asyncio
 async def test_send_completed_result_posts_expected_payload():
     """올바른 URL과 status=COMPLETED payload로 POST한다."""
+    # given
     requests = []
 
     async def handler(request):
@@ -45,8 +47,10 @@ async def test_send_completed_result_posts_expected_payload():
             http_client=http_client,
         )
 
+        # when
         await client.send_completed_result(REVIEW_ID, [make_item()])
 
+    # then
     request = requests[0]
     assert request.method == "POST"
     assert str(request.url) == (
@@ -63,6 +67,7 @@ async def test_send_completed_result_posts_expected_payload():
 @pytest.mark.asyncio
 async def test_send_failed_result_posts_expected_payload():
     """올바른 URL과 status=FAILED payload로 POST한다."""
+    # given
     requests = []
 
     async def handler(request):
@@ -75,12 +80,14 @@ async def test_send_failed_result_posts_expected_payload():
             http_client=http_client,
         )
 
+        # when
         await client.send_failed_result(
             REVIEW_ID,
             error_code=RecommendationErrorCode.NO_CANDIDATES,
             message="추천 후보가 없습니다.",
         )
 
+    # then
     payload = json.loads(requests[0].content)
     assert payload == {
         "status": "FAILED",
@@ -93,6 +100,7 @@ async def test_send_failed_result_posts_expected_payload():
 @pytest.mark.asyncio
 async def test_send_recommendations_empty_spring_response_body_200_success():
     """Spring이 200 OK + 빈 body를 반환하면 성공으로 처리한다."""
+    # given
     async def handler(request):
         return httpx.Response(200, content=b"")
 
@@ -102,12 +110,14 @@ async def test_send_recommendations_empty_spring_response_body_200_success():
             http_client=http_client,
         )
 
+        # when / then (예외 없이 완료되면 성공)
         await client.send_completed_result(REVIEW_ID, [make_item()])
 
 
 @pytest.mark.asyncio
 async def test_send_recommendations_non_2xx_raises_callback_error():
     """4xx/5xx 응답 시 CallbackError를 발생시킨다."""
+    # given
     async def handler(request):
         return httpx.Response(500, content=b"error")
 
@@ -117,6 +127,7 @@ async def test_send_recommendations_non_2xx_raises_callback_error():
             http_client=http_client,
         )
 
+        # when / then
         with pytest.raises(CallbackError):
             await client.send_completed_result(REVIEW_ID, [make_item()])
 
@@ -124,6 +135,7 @@ async def test_send_recommendations_non_2xx_raises_callback_error():
 @pytest.mark.asyncio
 async def test_send_recommendations_timeout_raises_callback_error():
     """타임아웃 시 CallbackError를 발생시킨다."""
+    # given
     async def handler(request):
         raise httpx.TimeoutException("timeout")
 
@@ -133,5 +145,6 @@ async def test_send_recommendations_timeout_raises_callback_error():
             http_client=http_client,
         )
 
+        # when / then
         with pytest.raises(CallbackError):
             await client.send_completed_result(REVIEW_ID, [make_item()])
