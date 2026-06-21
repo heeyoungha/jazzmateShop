@@ -9,7 +9,7 @@
 
 - [Request DTO](#request-dto)
   - [UserReviewRequest](#userreviewrequest)
-  - [RecommendAlbumBatchRequest](#recommendalbumbatchrequest)
+  - [RecommendAlbumCallbackRequest](#recommendalbumcallbackrequest)
 - [Response DTO](#response-dto)
   - [UserReviewCreateResponse](#userreviewcreateresponse)
   - [UserReviewResponse](#userreviewresponse)
@@ -51,7 +51,7 @@
 
 ---
 
-### RecommendAlbumBatchRequest
+### RecommendAlbumCallbackRequest
 
 > 사용처: `POST /api/user-reviews/{reviewId}/recommendations` (FastAPI 콜백)
 

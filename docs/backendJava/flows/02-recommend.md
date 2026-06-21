@@ -28,7 +28,7 @@
 
 ## 테스트 시나리오
 
-### DTO — [`RecommendAlbumBatchRequestTest`](../../../backendJava/src/test/java/shop/jazzmate/jazzmateshop/recommendation/dto/RecommendAlbumBatchRequestTest.java)
+### DTO — [`RecommendAlbumCallbackRequestTest`](../../../backendJava/src/test/java/shop/jazzmate/jazzmateshop/recommendation/dto/RecommendAlbumCallbackRequestTest.java)
 
 | 시나리오 |
 |----------|

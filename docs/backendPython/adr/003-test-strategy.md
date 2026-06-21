@@ -209,6 +209,61 @@ REVIEW_CONTENT = "차분하고 공간감 있는 모달 재즈가 인상적입니
 
 ---
 
+## Decision 6: 외부 의존성 격리는 pytest-mock 대신 직접 작성한 Fake 클래스를 사용한다
+
+### 비교
+
+**pytest-mock (`MagicMock`)**
+
+```python
+embedding_service = AsyncMock()
+embedding_service.embed_review.return_value = [0.1] * 1536
+
+service = RecommendationService(embedding_service=embedding_service, ...)
+await service.recommend_by_review(REVIEW_ID, REVIEW_CONTENT)
+
+embedding_service.embed_review.assert_called_once_with(REVIEW_CONTENT)
+```
+
+- 코드가 짧고 호출 검증 API(`assert_called_once_with`)가 내장되어 있다.
+- 반환값·예외를 한 줄로 설정할 수 있다 (`return_value`, `side_effect`).
+- 단, 메서드 시그니처를 강제하지 않아 인터페이스가 바뀌어도 테스트가 통과할 수 있다.
+- `AsyncMock`, `patch`, `spec` 등 pytest-mock 고유 개념을 알아야 읽힌다.
+
+**직접 작성한 Fake 클래스**
+
+```python
+class FakeEmbeddingService:
+    def __init__(self, vector=None, error=None):
+        self.vector = vector or [0.1] * 1536
+        self.error = error
+        self.calls = []
+
+    async def embed_review(self, review_content):
+        self.calls.append(review_content)
+        if self.error:
+            raise self.error
+        return self.vector
+```
+
+- 실제 인터페이스와 동일한 메서드 시그니처를 직접 작성하므로, 인터페이스 변경 시 Fake도 함께 수정해야 한다는 것이 명시적으로 드러난다.
+- `self.calls`로 호출 기록을 직접 관리해 테스트에서 `assert repo.calls == [USER_ID]` 형태로 읽기 쉽게 검증한다.
+- `error` 파라미터로 정상/에러 시나리오를 같은 클래스에서 표현한다.
+- pytest-mock을 모르는 사람도 Python 기본 지식만으로 읽을 수 있다.
+
+### 결정
+
+이 프로젝트에서는 **직접 작성한 Fake 클래스**를 기본으로 사용한다.
+
+### Rationale
+
+- 이 서비스의 외부 의존성은 `EmbeddingService`, `AlbumEmbeddingRepository`, `RecommendationReasonService`, `SpringCallbackClient`, `ReviewedAlbumEmbeddingRepository`, `TasteVectorService` 총 6개로 고정되어 있다. Fake 클래스 수가 많지 않아 유지 비용이 낮다.
+- `MagicMock`은 존재하지 않는 메서드도 호출을 허용한다. Fake는 정의한 메서드만 호출할 수 있어 인터페이스 계약을 더 엄격하게 검증한다.
+- 여러 파일에서 Fake가 중복되면 `tests/fakes.py`로 분리한다 (Decision 5 참고).
+- `monkeypatch`와 `pytest-mock`은 환경변수, 시간, 랜덤값처럼 Fake로 표현하기 어려운 경계에 제한적으로 사용한다.
+
+---
+
 ## Consequences
 
 - 비용과 네트워크 상태에 의존하지 않는 빠른 테스트를 유지한다.
