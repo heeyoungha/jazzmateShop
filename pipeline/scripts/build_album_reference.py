@@ -78,10 +78,6 @@ class MbCandidate:
     artist_name: str
     release_date: str | None
     country: str | None
-    label: str | None
-    catalog_number: str | None
-    release_status: str | None
-    track_count: int | None
 
 
 # ---------------------------------------------------------------------------
@@ -89,61 +85,83 @@ class MbCandidate:
 # ---------------------------------------------------------------------------
 
 JAZZ_CACHE_QUERY = """
+WITH jazz_rg AS (
+    -- 재즈 태그가 달린 release_group만 먼저 추려 JOIN 대상을 줄인다
+    SELECT DISTINCT rgt.release_group
+    FROM musicbrainz.release_group_tag rgt
+    JOIN musicbrainz.tag t ON rgt.tag = t.id AND lower(t.name) = 'jazz'
+),
+release_date AS (
+    -- release별 최초 발매 연도를 미리 집계 (correlated subquery 제거)
+    SELECT release, MIN(date_year) AS date_year
+    FROM musicbrainz.release_country
+    WHERE date_year IS NOT NULL
+    GROUP BY release
+    UNION ALL
+    SELECT release, MIN(date_year) AS date_year
+    FROM musicbrainz.release_unknown_country
+    WHERE date_year IS NOT NULL
+    GROUP BY release
+),
+release_min_year AS (
+    SELECT release, MIN(date_year) AS min_year
+    FROM release_date
+    GROUP BY release
+),
+best_release AS (
+    -- release_group당 Official 우선, 없으면 다른 status도 허용
+    -- 가장 오래된 발매본 1건만 선택
+    SELECT DISTINCT ON (r.release_group)
+        r.id, r.gid, r.release_group, r.artist_credit
+    FROM musicbrainz.release r
+    JOIN jazz_rg jrg ON jrg.release_group = r.release_group
+    LEFT JOIN release_min_year rmy ON rmy.release = r.id
+    ORDER BY r.release_group,
+             CASE WHEN r.status = 1 THEN 0 ELSE 1 END,  -- Official 우선
+             rmy.min_year NULLS LAST,
+             r.id
+)
 SELECT
-    r.gid                       AS mb_release_id,
-    a.gid                       AS mb_artist_id,
-    rg.gid                      AS mb_release_group_id,
-    r.name                      AS release_name,
-    a.name                      AS artist_name,
-    -- 발매일 조합 (year / year-month / year-month-day)
+    br.gid                          AS mb_release_id,
+    a.gid                           AS mb_artist_id,
+    rg.gid                          AS mb_release_group_id,
+    rg.name                         AS release_name,
+    a.name                          AS artist_name,
+    -- 발매일: release_country 우선, 없으면 release_unknown_country
     CASE
-        WHEN r.date_month IS NOT NULL AND r.date_day IS NOT NULL
-            THEN r.date_year::TEXT || '-'
-                 || LPAD(r.date_month::TEXT, 2, '0') || '-'
-                 || LPAD(r.date_day::TEXT, 2, '0')
-        WHEN r.date_month IS NOT NULL
-            THEN r.date_year::TEXT || '-' || LPAD(r.date_month::TEXT, 2, '0')
-        WHEN r.date_year IS NOT NULL
-            THEN r.date_year::TEXT
-        ELSE NULL
-    END                          AS release_date,
-    rc.country                   AS country,
-    ln.name                      AS label,
-    rl.catalog_number            AS catalog_number,
-    rs.name                      AS release_status,
-    SUM(m.track_count)           AS track_count
-FROM release r
-JOIN release_group rg       ON r.release_group = rg.id
-JOIN artist_credit ac       ON r.artist_credit = ac.id
-JOIN artist_credit_name acn ON acn.artist_credit = ac.id
-JOIN artist a               ON acn.artist = a.id
--- 재즈 필터: release_group에 'jazz' 태그가 달린 앨범만
-JOIN release_group_tag rgt  ON rgt.release_group = rg.id
-JOIN tag t                  ON rgt.tag = t.id AND lower(t.name) = 'jazz'
--- 레이블 (없을 수 있음)
-LEFT JOIN release_label rl  ON rl.release = r.id AND rl.position = 1
-LEFT JOIN label ln          ON rl.label = ln.id
--- 국가 (없을 수 있음)
-LEFT JOIN release_country rc ON rc.release = r.id
--- 발매 상태 (Official / Bootleg 등)
-LEFT JOIN release_status rs  ON rs.id = r.status
--- 트랙 수 (medium별 합산)
-LEFT JOIN medium m           ON m.release = r.id
--- artist_credit의 첫 번째 아티스트만
-WHERE acn.position = 1
-GROUP BY r.gid, a.gid, rg.gid, r.name, a.name,
-         r.date_year, r.date_month, r.date_day,
-         rc.country, ln.name, rl.catalog_number, rs.name
-ORDER BY a.name, r.name;
+        WHEN COALESCE(rc.date_year, ruc.date_year) IS NULL THEN NULL
+        WHEN COALESCE(rc.date_month, ruc.date_month) IS NOT NULL
+             AND COALESCE(rc.date_day, ruc.date_day) IS NOT NULL
+            THEN COALESCE(rc.date_year, ruc.date_year)::TEXT || '-'
+                 || LPAD(COALESCE(rc.date_month, ruc.date_month)::TEXT, 2, '0') || '-'
+                 || LPAD(COALESCE(rc.date_day, ruc.date_day)::TEXT, 2, '0')
+        WHEN COALESCE(rc.date_month, ruc.date_month) IS NOT NULL
+            THEN COALESCE(rc.date_year, ruc.date_year)::TEXT || '-'
+                 || LPAD(COALESCE(rc.date_month, ruc.date_month)::TEXT, 2, '0')
+        ELSE COALESCE(rc.date_year, ruc.date_year)::TEXT
+    END                             AS release_date,
+    ar.name                         AS country
+FROM best_release br
+JOIN musicbrainz.release_group rg   ON rg.id = br.release_group
+JOIN musicbrainz.artist_credit ac   ON ac.id = br.artist_credit
+JOIN musicbrainz.artist_credit_name acn ON acn.artist_credit = ac.id AND acn.position = 0
+JOIN musicbrainz.artist a           ON a.id = acn.artist
+LEFT JOIN musicbrainz.release_country rc        ON rc.release = br.id
+LEFT JOIN musicbrainz.release_unknown_country ruc ON ruc.release = br.id
+LEFT JOIN musicbrainz.area ar                   ON ar.id = rc.country
+GROUP BY br.gid, a.gid, rg.gid, rg.name, a.name,
+         rc.date_year, rc.date_month, rc.date_day,
+         ruc.date_year, ruc.date_month, ruc.date_day,
+         ar.name
+ORDER BY a.name, rg.name;
 """
 
 
-def build_mb_jazz_cache(mb_conn) -> dict[str, list[MbCandidate]]:
+def build_mb_jazz_cache(mb_conn) -> tuple[dict[str, list[MbCandidate]], dict[str, list[str]]]:
     """
     MusicBrainz에서 재즈 앨범 전체를 읽어
     { normalized_artist_name: [MbCandidate, ...] } 딕셔너리로 반환.
-
-    artist 기준으로 그룹핑해두면 매칭 시 전체 스캔 없이 후보를 좁힐 수 있다.
+    추가로 { prefix2: [artist_key, ...] } 인덱스도 반환해 fallback 탐색을 빠르게 한다.
     """
     log.info("MusicBrainz 재즈 앨범 캐시 구축 중...")
     cur = mb_conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
@@ -152,6 +170,7 @@ def build_mb_jazz_cache(mb_conn) -> dict[str, list[MbCandidate]]:
     log.info("  MusicBrainz 재즈 앨범 %d건 로드 완료", len(rows))
 
     cache: dict[str, list[MbCandidate]] = {}
+    prefix_index: dict[str, list[str]] = {}  # 앞 2글자 → artist key 목록
     for row in rows:
         key = normalize(row["artist_name"])
         candidate = MbCandidate(
@@ -162,15 +181,14 @@ def build_mb_jazz_cache(mb_conn) -> dict[str, list[MbCandidate]]:
             artist_name=row["artist_name"],
             release_date=row["release_date"],
             country=row["country"],
-            label=row["label"],
-            catalog_number=row["catalog_number"],
-            release_status=row["release_status"],
-            track_count=row["track_count"],
         )
         cache.setdefault(key, []).append(candidate)
+        prefix = key[:2] if len(key) >= 2 else key
+        if key not in prefix_index.get(prefix, []):
+            prefix_index.setdefault(prefix, []).append(key)
 
     log.info("  고유 아티스트 %d명 인덱싱 완료", len(cache))
-    return cache
+    return cache, prefix_index
 
 
 # ---------------------------------------------------------------------------
@@ -212,26 +230,28 @@ def year_penalty(atj_year: str | None, mb_date: str | None) -> float:
 def find_best_match(
     album: AlbumRow,
     cache: dict[str, list[MbCandidate]],
+    prefix_index: dict[str, list[str]],
 ) -> tuple[MbCandidate | None, float]:
     """
     album_reference 1건에 대해 MusicBrainz 최적 후보를 반환.
 
     매칭 점수 = 앨범명 유사도 * 0.6 + 아티스트명 유사도 * 0.4 - 연도 페널티
 
-    아티스트명을 먼저 후보군으로 좁히고 (normalize 키 매칭),
-    그 안에서 앨범명 유사도로 최종 선택한다.
+    1단계: exact match로 후보 좁히기
+    2단계: prefix 인덱스로 같은 앞 2글자 키만 유사도 비교 (전체 순회 제거)
     """
     norm_artist = normalize(album.artist_name)
     norm_title  = normalize(album.album_title)
 
     # 1단계: 정확한 아티스트 키로 후보 좁히기
-    candidates = cache.get(norm_artist, [])
+    candidates = list(cache.get(norm_artist, []))
 
-    # 2단계: 아티스트명 유사도 0.7 이상인 키로 확장 (오탈자 대응)
+    # 2단계: prefix 인덱스로 같은 앞 2글자 키만 비교 (오탈자 대응)
     if not candidates:
-        for key, items in cache.items():
-            if string_similarity(norm_artist, key) >= 0.7:
-                candidates.extend(items)
+        prefix = norm_artist[:2] if len(norm_artist) >= 2 else norm_artist
+        for key in prefix_index.get(prefix, []):
+            if key != norm_artist and string_similarity(norm_artist, key) >= 0.7:
+                candidates.extend(cache[key])
 
     if not candidates:
         return None, 0.0
@@ -296,10 +316,6 @@ def upsert_match(
             mb_release_group_id = %s,
             mb_release_date     = %s,
             mb_country          = %s,
-            mb_label            = %s,
-            mb_catalog_number   = %s,
-            mb_release_status   = %s,
-            mb_track_count      = %s,
             mb_matched          = %s,
             mb_match_score      = %s,
             mb_matched_at       = %s
@@ -312,10 +328,6 @@ def upsert_match(
         candidate.mb_release_group_id,
         candidate.release_date,
         candidate.country,
-        candidate.label,
-        candidate.catalog_number,
-        candidate.release_status,
-        candidate.track_count,
         matched,
         score,
         datetime.now(timezone.utc),
@@ -346,21 +358,25 @@ def run(dry_run: bool, limit: int | None) -> None:
     mb_conn = psycopg2.connect(MB_DB_URL)
     mb_conn.set_session(readonly=True, autocommit=True)
 
+    try:
+        # 1. MusicBrainz 재즈 앨범 캐시 (시간이 걸리므로 Supabase 연결 전에 수행)
+        cache, prefix_index = build_mb_jazz_cache(mb_conn)
+    finally:
+        mb_conn.close()
+
     sb_conn = psycopg2.connect(SUPABASE_DB_URL)
 
     try:
-        # 1. MusicBrainz 재즈 앨범 캐시
-        cache = build_mb_jazz_cache(mb_conn)
-
         # 2. 미매칭 앨범 목록
         albums = fetch_unmatched(sb_conn, limit)
         log.info("매칭 대상: %d건", len(albums))
 
         matched_count   = 0
         unmatched_count = 0
+        BATCH_SIZE = 500
 
-        for album in albums:
-            candidate, score = find_best_match(album, cache)
+        for i, album in enumerate(albums):
+            candidate, score = find_best_match(album, cache, prefix_index)
             matched = candidate is not None and score >= MATCH_THRESHOLD
 
             if dry_run:
@@ -377,6 +393,10 @@ def run(dry_run: bool, limit: int | None) -> None:
                 else:
                     mark_no_match(sb_conn, album.id)
 
+                if (i + 1) % BATCH_SIZE == 0:
+                    sb_conn.commit()
+                    log.info("진행: %d / %d (매칭: %d)", i + 1, len(albums), matched_count + (1 if matched else 0))
+
             if matched:
                 matched_count += 1
             else:
@@ -384,7 +404,7 @@ def run(dry_run: bool, limit: int | None) -> None:
 
         if not dry_run:
             sb_conn.commit()
-            log.info("커밋 완료")
+            log.info("최종 커밋 완료")
 
         log.info(
             "=== 완료 | 매칭 성공: %d / 미매칭: %d / 전체: %d ===",
@@ -398,7 +418,6 @@ def run(dry_run: bool, limit: int | None) -> None:
         sys.exit(1)
 
     finally:
-        mb_conn.close()
         sb_conn.close()
 
 
