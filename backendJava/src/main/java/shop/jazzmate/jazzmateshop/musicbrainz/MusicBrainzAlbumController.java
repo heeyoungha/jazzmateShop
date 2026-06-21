@@ -19,7 +19,7 @@ public class MusicBrainzAlbumController {
     @GetMapping("/search")
     public List<MusicBrainzAlbumSearchResponse> search(
             @RequestParam String albumName,
-            @RequestParam String artistName) {
+            @RequestParam(required = false, defaultValue = "") String artistName) {
         return musicBrainzAlbumService.search(albumName, artistName);
     }
 }

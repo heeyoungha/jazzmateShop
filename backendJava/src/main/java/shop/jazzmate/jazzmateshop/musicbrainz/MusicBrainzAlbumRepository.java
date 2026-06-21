@@ -10,12 +10,13 @@ import java.util.UUID;
 
 public interface MusicBrainzAlbumRepository extends JpaRepository<MusicBrainzAlbum, UUID> {
 
-    @Query("""
-            SELECT a FROM MusicBrainzAlbum a
-            WHERE LOWER(a.name) LIKE LOWER(CONCAT('%', :albumName, '%'))
-              AND LOWER(a.artistName) LIKE LOWER(CONCAT('%', :artistName, '%'))
-            ORDER BY a.firstReleaseYear ASC
-            """)
+    @Query(value = """
+            SELECT * FROM mb_album
+            WHERE LOWER(name) LIKE LOWER(CONCAT('%', :albumName, '%'))
+              AND (:artistName = '' OR LOWER(artist_name) LIKE LOWER(CONCAT('%', :artistName, '%')))
+            ORDER BY first_release_year ASC
+            LIMIT 20
+            """, nativeQuery = true)
     List<MusicBrainzAlbum> search(@Param("albumName") String albumName,
                                   @Param("artistName") String artistName);
 }
