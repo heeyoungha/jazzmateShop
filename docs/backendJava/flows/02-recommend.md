@@ -117,3 +117,18 @@
 - `RecommendationEventListener`: 재발행된 이벤트를 커밋 후 처리
 
 API/DTO/Entity 상세는 [API_SPEC.md](../../API_SPEC.md), [MODEL_SPEC.md](../MODEL_SPEC.md)를 따른다.
+
+## FastAPI 추천 요청 변경사항
+
+`AiRecommendationClient`가 FastAPI에 보내는 요청 바디에 `user_id` 필드를 추가해야 한다.
+
+```java
+// before
+Map.of("review_id", reviewId, "review_content", reviewContent)
+
+// after
+Map.of("review_id", reviewId, "review_content", reviewContent, "user_id", userId)
+```
+
+- `userId`는 `UserReview` 엔티티에서 가져온다.
+- FastAPI에서 `user_id`는 필수값이므로 누락 시 422를 반환한다.

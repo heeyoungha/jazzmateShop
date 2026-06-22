@@ -2,78 +2,85 @@
 
 ## 전체 흐름
 
-```
-[프론트엔드]                  [Spring Boot]                    [FastAPI]
-     │                             │                               │
-     │         (플로우 01에서 이어짐 — navigate(/recommend/{id}) 직후)   │
-     │                             │                               │
-     │  GET /api/user-reviews/{id} │                               │
-     │────────────────────────────►│                               │
-     │  PENDING                    │                               │
-     │◄────────────────────────────│                               │
-     │                             │  추천 시작 API 호출             │
-     │                             │──────────────────────────────►│
-     │                             │                               │ 임베딩 생성
-     │                             │                               │ 유사도 검색
-     │                             │                               │ 추천 사유 생성
-     │                             │  POST /api/user-reviews       │
-     │                             │      /{id}/recommendations    │
-     │                             │◄──────────────────────────────│
-     │                             │  status == COMPLETED          │
-     │                             │  recommend_album 저장          │
-     │                             │                               │
-     │  GET /api/user-reviews/{id} │                               │
-     │  (polling 반복)              │                               │
-     │────────────────────────────►│                               │
-     │  COMPLETED + recommendations[]                              │
-     │◄────────────────────────────│                               │
+```plantuml
+@startuml
+participant "프론트엔드" as FE
+participant "Spring Boot" as SP
+participant "FastAPI" as FA
+
+note over FE,FA : 플로우 01에서 이어짐 (navigate /recommend/{id} 직후)
+
+FE -> SP : GET /api/user-reviews/{id}
+SP --> FE : recommendationStatus=PENDING
+
+SP -> FA : POST /recommend/review\n{review_id, review_content, user_id}
+note over FA
+  임베딩 생성
+  취향 벡터 합산
+  유사도 검색
+  추천 사유 생성
+end note
+FA -> SP : POST /api/user-reviews/{id}/recommendations\n{status: "COMPLETED", recommendations[]}
+note over SP
+  recommend_album 저장
+  status → COMPLETED
+end note
+
+loop polling
+  FE -> SP : GET /api/user-reviews/{id}
+  SP --> FE : recommendationStatus=COMPLETED + recommendations[]
+end
+@enduml
 ```
 
 ## 실패 콜백 흐름
 
-```
-[Spring Boot]                    [FastAPI]
-     │                               │
-     │  추천 시작 API 호출             │
-     │──────────────────────────────►│
-     │                               │ 임베딩/검색 실패
-     │                               │ 또는 추천 후보 0건
-     │  POST /api/user-reviews       │
-     │      /{id}/recommendations    │
-     │  { status: "FAILED", ... }    │
-     │◄──────────────────────────────│
-     │  status = FAILED              │
+```plantuml
+@startuml
+participant "Spring Boot" as SP
+participant "FastAPI" as FA
+
+SP -> FA : POST /recommend/review\n{review_id, review_content, user_id}
+note over FA
+  임베딩/검색 실패
+  또는 추천 후보 0건
+end note
+FA -> SP : POST /api/user-reviews/{id}/recommendations\n{status: "FAILED", errorCode, message}
+note over SP : status → FAILED
+@enduml
 ```
 
 ## 재시도 흐름 (FAILED 상태)
 
-```
-[프론트엔드]                  [Spring Boot]                    [FastAPI]
-     │                             │                               │
-     │  GET /api/user-reviews/{id} │                               │
-     │────────────────────────────►│                               │
-     │  recommendationStatus       │                               │
-     │  == "FAILED"                │                               │
-     │◄────────────────────────────│                               │
-     │  retry 버튼 노출              │                               │
-     │                             │                               │
-     │  POST /api/user-reviews     │                               │
-     │      /{id}/retry            │                               │
-     │────────────────────────────►│                               │
-     │                             │  PENDING 전이                  │
-     │                             │  RecommendationRequestEvent   │
-     │                             │  재발행                         │
-     │                             │──────────────────────────────►│ (위 흐름 반복)
-     │  이후 polling 재개            │                               │
+```plantuml
+@startuml
+participant "프론트엔드" as FE
+participant "Spring Boot" as SP
+participant "FastAPI" as FA
+
+FE -> SP : GET /api/user-reviews/{id}
+SP --> FE : recommendationStatus=FAILED
+note over FE : retry 버튼 노출
+
+FE -> SP : POST /api/user-reviews/{id}/retry
+note over SP
+  status → PENDING
+  RecommendationRequestEvent 재발행
+end note
+SP -> FA : POST /recommend/review\n(위 흐름 반복)
+note over FE : polling 재개
+@enduml
 ```
 
 ## 모듈별 역할
 
-| 모듈 | 상세 문서 |
-|------|-----------|
-| 프론트엔드 | [frontend/flows/02-recommend.md](../frontend/flows/02-recommend.md) |
-| Spring Boot | [backendJava/flows/02-recommend.md](../backendJava/flows/02-recommend.md) |
-| FastAPI | [backendPython/flows/02-recommend.md](../backendPython/flows/02-recommend.md) |
+
+| 모듈          | 상세 문서                                                                         |
+| ----------- | ----------------------------------------------------------------------------- |
+| 프론트엔드       | [frontend/flows/02-recommend.md](../frontend/flows/02-recommend.md)           |
+| Spring Boot | [backendJava/flows/02-recommend.md](../backendJava/flows/02-recommend.md)     |
+| FastAPI     | [backendPython/flows/02-recommend.md](../backendPython/flows/02-recommend.md) |
+
 
 ## 핵심 계약
 
@@ -90,3 +97,4 @@
 - [API_SPEC.md — GET /api/user-reviews/{id}](../API_SPEC.md#get-apiuser-reviewsid)
 - [API_SPEC.md — POST /api/user-reviews/{id}/retry](../API_SPEC.md#post-apiuser-reviewsidretry)
 - [API_SPEC.md — POST /api/user-reviews/{reviewId}/recommendations](../API_SPEC.md#post-apiuser-reviewsreviewidrecommendations)
+

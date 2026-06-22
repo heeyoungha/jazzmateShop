@@ -4,22 +4,79 @@
 
 ## 요구사항
 
+**입력 검증**
+- `user_id`는 필수값이다. 누락 시 422를 반환한다.
+
+**취향 벡터 생성**
+- `user_id`가 있으면 `user_reviews.mb_album_gid`로 감상한 앨범 임베딩을 조회해 취향 벡터를 생성한다.
+- 취향 벡터 = 감상문 임베딩 × 0.6 + 감상 앨범 임베딩 평균 × 0.4
+- 감상한 앨범이 없으면 감상문 임베딩 100%로 검색한다 (폴백).
+
+**유사도 검색**
+- 유사도 검색 대상은 `album_reference`로 고정한다.
 - 추천 수는 `config.RECOMMENDATION_TOP_K` (기본값 3)로 관리한다. 변경 시 이 값만 수정한다.
-- 유사도 검색 대상은 `v_embedding_with_album`으로 고정한다.
+
+**추천 사유 생성**
 - 추천 사유는 유사도 검색 결과와 `review_content`를 함께 사용해 생성한다.
-- Spring 콜백 전송 실패 시 재시도 정책은 별도 결정 전까지 로그만 기록한다.
+
+**Spring 콜백**
 - FastAPI는 `user_reviews`, `recommend_album`을 직접 수정하지 않는다. 추천 결과 저장과 상태 전이는 Spring Boot 콜백에 위임한다.
-- 운영 경로에서 유사도 검색 Repository는 FastAPI lifespan에서 생성된 DB client를 dependency provider를 통해 주입받는다.
+- Spring 콜백 전송 실패 시 재시도 정책은 별도 결정 전까지 로그만 기록한다.
+
+**인프라**
+- 운영 경로에서 Repository는 FastAPI lifespan에서 생성된 DB client를 dependency provider를 통해 주입받는다.
 - DB client 설정이 누락되면 `None.from_(...)` 같은 런타임 오류가 아니라 설정 누락 예외로 실패한다.
+
+## 처리 흐름
+
+```puml
+@startuml
+participant "RecommendationService" as RS
+participant "EmbeddingService" as ES
+participant "UserListenedAlbumRepository" as RAR
+participant "TasteVectorService" as TV
+participant "SimilaritySearch" as AER
+participant "RecommendationReasonService" as RRS
+participant "SpringCallbackClient" as CC
+
+RS -> ES : embed_review(review_content)
+ES --> RS : review_embedding
+
+RS -> RAR : find_by_user_id(user_id)
+RAR --> RS : reviewed_album_embeddings
+
+alt #LightGreen 감상 앨범 있음
+  RS -> TV : build_query_vector(review_embedding, reviewed_album_embeddings)
+  TV --> RS : query_vector (60% + 40% 블렌딩)
+else #LightYellow 감상 앨범 없음 (폴백)
+  RS -> RS : query_vector = review_embedding
+end
+
+RS -> AER : find_similar_albums(query_vector, top_k)
+note right of AER : 네트워크/DB 오류 시\nsend_failed_result() 콜백
+AER --> RS : candidates[]
+
+alt #LightYellow 후보 없음
+  note over RS : top-k 방식이므로 album_reference가\n비어있지 않으면 실질적으로 발생 안 함
+  RS -> CC : send_failed_result(NO_CANDIDATES)
+else #LightGreen 후보 있음
+  RS -> RRS : generate_reasons(review_content, candidates)
+  RRS --> RS : reasons[]
+  RS -> CC : send_completed_result(review_id, recommendations[])
+end
+@enduml
+```
 
 ## 관련 구성요소
 
 | 단계 | 구성요소 | 역할 | 입력 | 출력 | DB/API |
 |------|----------|------|------|------|--------|
 | 1 | `embedding_service` | 감상문 임베딩 생성 | review_content | embedding vector | OpenAI Python SDK Embeddings API |
-| 2 | `similarity_search` | `v_embedding_with_album` 유사도 검색 | embedding vector | TOP K 앨범 | v_embedding_with_album SELECT |
-| 3 | `recommendation_reason_service` | 앨범별 추천 사유 생성 | review_content, TOP K 앨범 | recommendationReason 목록 | OpenAI Python SDK Chat API |
-| 4 | `callback_client` | Spring 처리 결과 콜백 전송 | review_id, COMPLETED/FAILED 결과 | - | POST Spring /api/user-reviews/{id}/recommendations |
+| 2 | `user_listened_album_repository` | 사용자 감상 앨범 임베딩 조회 | user_id | embedding[] | user_reviews → album_reference SELECT |
+| 3 | `taste_vector_service` | 감상문 + 취향 벡터 블렌딩 | review_embedding, reviewed_album_embeddings | query_vector | - |
+| 4 | `similarity_search` | `album_reference` 유사도 검색 | query_vector | TOP K 앨범 | match_albums() RPC |
+| 5 | `recommendation_reason_service` | 앨범별 추천 사유 생성 | review_content, TOP K 앨범 | recommendationReason 목록 | OpenAI Python SDK Chat API |
+| 6 | `callback_client` | Spring 처리 결과 콜백 전송 | review_id, COMPLETED/FAILED 결과 | - | POST Spring /api/user-reviews/{id}/recommendations |
 
 ## 테스트 시나리오
 
@@ -45,13 +102,15 @@
 
 | 시나리오 |
 |----------|
-| 성공 경로는 임베딩 생성, TOP K 검색, 추천 사유 생성, Spring 콜백까지 수행 |
+| 성공 경로는 임베딩 생성, 취향 벡터 합산, TOP K 검색, 추천 사유 생성, Spring 콜백까지 수행 |
 | TOP K 검색은 `RECOMMENDATION_TOP_K` 설정값 사용 |
 | 콜백 score는 0.0000~1.0000 범위로 정규화 |
 | 후보 0건이면 추천 사유 생성 없이 FAILED 콜백 전송 |
 | 임베딩 실패 시 검색/LLM을 호출하지 않고 FAILED 콜백 전송 |
 | 유사도 검색 실패 시 LLM을 호출하지 않고 FAILED 콜백 전송 |
 | 콜백 전송 실패는 별도 결정 전까지 로그만 기록 |
+| user_id가 있고 매칭 앨범이 있으면 TasteVectorService로 블렌딩된 벡터로 검색 |
+| user_id가 있어도 매칭 앨범이 없으면 review embedding 100%로 검색 |
 
 ### Repository — `AlbumEmbeddingRepositoryTest`
 
@@ -59,9 +118,23 @@
 |----------|
 | DB client 없이 Repository를 생성하면 설정 누락 예외 발생 |
 | TOP K 유사도 검색은 similarity DESC 정렬과 최대 K건 반환 |
-| 조회 대상은 `v_embedding_with_album`으로 고정 |
+| 조회 대상은 `album_reference`로 고정 |
 | 후보 없음은 빈 리스트 반환 |
 | DB 조회 실패는 도메인 예외로 변환 |
+
+### Repository — `UserListenedAlbumRepositoryTest`
+
+| 시나리오 |
+|----------|
+| user_id로 조회한 앨범의 embedding을 중복 제거 후 반환 |
+| 감상한 앨범이 없으면 빈 리스트 반환 |
+
+### Service — `TasteVectorServiceTest`
+
+| 시나리오 |
+|----------|
+| 감상문 임베딩(60%)과 감상 앨범 임베딩 평균(40%)을 블렌딩 |
+| 감상 앨범이 없으면 감상문 임베딩 그대로 반환 |
 
 ### API Dependency — `RecommendationDependencyTest`
 
@@ -97,9 +170,10 @@
 
 ### `RecommendationFlowIntegrationTest`
 
-| 시나리오 | 기댓값 | 테스트 메서드 |
-|----------|--------|---------------|
-| 정상 요청 전체 흐름 | 202 반환 후 콜백 client 호출 확인 | `recommendFlow_validRequest_returns202AndProcessesCallback` |
+| 시나리오 | 기댓값 |
+|----------|--------|
+| user_id 누락 요청 | 422 반환 |
+| user_id 포함 유효 요청 | 202 반환 후 service에 user_id 전달 확인 |
 
 ## 관련 API
 
