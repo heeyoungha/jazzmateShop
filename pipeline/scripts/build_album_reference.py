@@ -196,9 +196,14 @@ def build_mb_jazz_cache(mb_conn) -> tuple[dict[str, list[MbCandidate]], dict[str
 # ---------------------------------------------------------------------------
 
 def normalize(text: str) -> str:
-    """비교용 정규화: 소문자, 특수문자 제거, 공백 정리"""
+    """비교용 정규화: 소문자, 약어 확장, 특수문자 제거, 공백 정리"""
     text = text.lower()
-    text = re.sub(r"[''\"()[\].,!?&\-]", " ", text)
+    # 약어 정규화
+    text = re.sub(r"\bvol\.?\s*(\d+|one|two|three|four|five)\b", lambda m: "volume " + m.group(1), text)
+    text = re.sub(r"\bpt\.?\s*(\d+)\b", r"part \1", text)
+    text = re.sub(r"\bno\.?\s*(\d+)\b", r"number \1", text)
+    text = re.sub(r"\bst\.?\b", "saint", text)
+    text = re.sub(r"[''\"()[\].,!?&\-:]", " ", text)
     text = re.sub(r"\s+", " ", text).strip()
     return text
 
@@ -241,7 +246,14 @@ def find_best_match(
     2단계: prefix 인덱스로 같은 앞 2글자 키만 유사도 비교 (전체 순회 제거)
     """
     norm_artist = normalize(album.artist_name)
-    norm_title  = normalize(album.album_title)
+
+    # AllAboutJazz는 앨범명에 "아티스트명: 앨범명" 형식이 많음 → 접두사 제거
+    title = album.album_title
+    if ":" in title:
+        prefix, rest = title.split(":", 1)
+        if string_similarity(normalize(prefix), norm_artist) >= 0.8:
+            title = rest.strip()
+    norm_title = normalize(title)
 
     # 1단계: 정확한 아티스트 키로 후보 좁히기
     candidates = list(cache.get(norm_artist, []))
@@ -261,9 +273,16 @@ def find_best_match(
 
     for c in candidates:
         artist_sim = string_similarity(norm_artist, normalize(c.artist_name))
-        title_sim  = string_similarity(norm_title,  normalize(c.release_name))
-        penalty    = year_penalty(album.release_year, c.release_date)
-        score      = title_sim * 0.6 + artist_sim * 0.4 - penalty
+        norm_release = normalize(c.release_name)
+        title_sim  = string_similarity(norm_title, norm_release)
+
+        # 한쪽이 다른쪽을 포함하면 보너스 (부제목, 접두사 차이 대응)
+        if norm_title and norm_release:
+            if norm_title in norm_release or norm_release in norm_title:
+                title_sim = max(title_sim, 0.9)
+
+        penalty = year_penalty(album.release_year, c.release_date)
+        score   = title_sim * 0.6 + artist_sim * 0.4 - penalty
 
         if score > best_score:
             best_score = score
