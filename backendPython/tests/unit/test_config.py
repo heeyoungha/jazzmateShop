@@ -7,6 +7,7 @@ from pydantic import ValidationError
 REQUIRED_ENV = {
     "SUPABASE_URL": "https://supabase.example.com",
     "SUPABASE_SERVICE_ROLE_KEY": "service-role-key",
+    "OPENAI_API_KEY": "test-openai-api-key",
     "OPENAI_EMBEDDING_MODEL": "text-embedding-3-small",
     "OPENAI_CHAT_MODEL": "gpt-4o-mini",
     "EMBEDDING_DIMENSIONS": "1536",

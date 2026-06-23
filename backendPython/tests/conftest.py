@@ -8,6 +8,7 @@ import pytest
 _TEST_ENV = {
     "SUPABASE_URL": "https://test.supabase.co",
     "SUPABASE_SERVICE_ROLE_KEY": "test-service-role-key",
+    "OPENAI_API_KEY": "test-openai-api-key",
     "OPENAI_CHAT_MODEL": "gpt-4o-mini",
     "EMBEDDING_DIMENSIONS": "1536",
     "RECOMMENDATION_TOP_K": "3",

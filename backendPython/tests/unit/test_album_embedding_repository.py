@@ -59,9 +59,9 @@ async def test_find_similar_albums_returns_top_k_by_similarity():
     """유사도 DESC 정렬 후 최대 K건을 반환한다."""
     # given
     rows = [
-        {"album_id": "3", "similarity": 0.80},
-        {"album_id": "1", "similarity": 0.98},
-        {"album_id": "2", "similarity": 0.91},
+        {"album_id": "3", "similarity": 0.80, "critics_review_id": "1003"},
+        {"album_id": "1", "similarity": 0.98, "critics_review_id": "1001"},
+        {"album_id": "2", "similarity": 0.91, "critics_review_id": "1002"},
     ]
     repository = AlbumEmbeddingRepository(database=FakeDatabaseClient(FakeQuery(rows)))
 
@@ -110,3 +110,17 @@ async def test_find_similar_albums_db_failure_raises_repository_error():
     # when / then
     with pytest.raises(RepositoryError):
         await repository.find_similar_albums([0.1] * settings.EMBEDDING_DIMENSIONS, top_k=3)
+
+
+@pytest.mark.asyncio
+async def test_find_similar_albums_invalid_row_raises_repository_error():
+    """DB row 계약이 깨져도 RepositoryError로 변환한다."""
+    # given
+    rows = [{"album_id": "1", "similarity": 0.98}]
+    repository = AlbumEmbeddingRepository(database=FakeDatabaseClient(FakeQuery(rows)))
+
+    # when / then
+    with pytest.raises(RepositoryError):
+        await repository.find_similar_albums(
+            [0.1] * settings.EMBEDDING_DIMENSIONS, top_k=3
+        )

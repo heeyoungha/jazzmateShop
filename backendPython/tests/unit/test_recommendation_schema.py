@@ -1,6 +1,9 @@
 from decimal import Decimal
 
+import pytest
+
 from app.schemas.recommendation import (
+    AlbumCandidate,
     RecommendByReviewRequest,
     RecommendationCallbackItem,
     RecommendationCallbackRequest,
@@ -8,7 +11,14 @@ from app.schemas.recommendation import (
 
 from app.core.error_codes import RecommendationErrorCode
 
-from tests.fixtures import ALBUM_ID_1, CRITICS_REVIEW_ID_1, REVIEW_CONTENT, REVIEW_ID, dump_alias
+from tests.fixtures import (ALBUM_ID_1,
+    CRITICS_REVIEW_ID_1,
+    REVIEW_CONTENT,
+    REVIEW_ID,
+    dump_alias,
+)
+
+USER_ID = "42"
 
 
 def test_request_valid_maps_fields():
@@ -18,12 +28,14 @@ def test_request_valid_maps_fields():
     request = RecommendByReviewRequest(
         review_id=REVIEW_ID,
         review_content=REVIEW_CONTENT,
+        user_id=USER_ID,
     )
 
     # then
     assert dump_alias(request) == {
         "review_id": REVIEW_ID,
         "review_content": REVIEW_CONTENT,
+        "user_id": USER_ID,
     }
 
 
@@ -87,3 +99,65 @@ def test_callback_request_failed_contains_error_and_empty_recommendations():
         "errorCode": RecommendationErrorCode.NO_CANDIDATES,
         "message": "추천 후보가 없습니다.",
     }
+
+
+def test_callback_request_completed_rejects_error_details():
+    """성공 콜백은 실패 사유 필드를 함께 보낼 수 없다."""
+    # given
+    item = RecommendationCallbackItem(
+        album_id=ALBUM_ID_1,
+        recommendation_score=Decimal("0.9423"),
+        recommendation_reason="감상문과 앨범 모두 차분한 모달 재즈의 분위기를 공유합니다.",
+        critics_review_id=CRITICS_REVIEW_ID_1,
+    )
+
+    # when / then
+    with pytest.raises(ValueError, match="completed callback"):
+        RecommendationCallbackRequest(
+            status="COMPLETED",
+            recommendations=[item],
+            error_code=RecommendationErrorCode.NO_CANDIDATES,
+        )
+
+
+def test_callback_request_failed_requires_error_details():
+    """실패 콜백은 errorCode와 message를 반드시 포함해야 한다."""
+    # given / when / then
+    with pytest.raises(ValueError, match="failed callback requires"):
+        RecommendationCallbackRequest(status="FAILED", recommendations=[])
+
+
+def test_callback_request_failed_rejects_recommendations():
+    """실패 콜백은 추천 목록을 함께 보낼 수 없다."""
+    # given
+    item = RecommendationCallbackItem(
+        album_id=ALBUM_ID_1,
+        recommendation_score=Decimal("0.9423"),
+        recommendation_reason="감상문과 앨범 모두 차분한 모달 재즈의 분위기를 공유합니다.",
+        critics_review_id=CRITICS_REVIEW_ID_1,
+    )
+
+    # when / then
+    with pytest.raises(ValueError, match="must not include recommendations"):
+        RecommendationCallbackRequest(
+            status="FAILED",
+            recommendations=[item],
+            error_code=RecommendationErrorCode.NO_CANDIDATES,
+            message="추천 후보가 없습니다.",
+        )
+
+
+def test_album_candidate_from_row_requires_album_id():
+    """DB row에 album_id가 없으면 빈 문자열 후보를 만들지 않는다."""
+    # given / when / then
+    with pytest.raises(ValueError, match="album_id"):
+        AlbumCandidate.from_row(
+            {"similarity": 0.9, "critics_review_id": CRITICS_REVIEW_ID_1}
+        )
+
+
+def test_album_candidate_from_row_requires_critics_review_id():
+    """DB row에 critics_review_id가 없으면 콜백 불가능한 후보를 만들지 않는다."""
+    # given / when / then
+    with pytest.raises(ValueError, match="critics_review_id"):
+        AlbumCandidate.from_row({"album_id": ALBUM_ID_1, "similarity": 0.9})
