@@ -15,7 +15,7 @@
 **유사도 검색**
 - 유사도 검색 대상은 `album_reference`로 고정한다.
 - 추천 수는 `config.RECOMMENDATION_TOP_K` (기본값 3)로 관리한다. 변경 시 이 값만 수정한다.
-- 메타 재순위를 위해 `match_albums()` 후보는 `max(RECOMMENDATION_TOP_K, 50)`개 조회한다.
+- 메타 재순위를 위해 `match_albums()` 후보는 `max(RECOMMENDATION_TOP_K, RECOMMENDATION_CANDIDATE_POOL_SIZE)`개 조회한다.
 
 **MusicBrainz 메타 재순위**
 - `user_reviews.mb_album_gid`로 사용자의 기존 감상 이력 `mb_album` 메타를 조회한다.
@@ -165,7 +165,7 @@ end
 | 시나리오 |
 |----------|
 | 성공 경로는 임베딩 생성, 취향 벡터 합산, 후보 pool 검색, 메타 재순위, 추천 사유 생성, Spring 콜백까지 수행 |
-| 후보 검색은 `max(RECOMMENDATION_TOP_K, 50)`개 조회 후 최종 콜백은 `RECOMMENDATION_TOP_K` 이하로 제한 |
+| 후보 검색은 `max(RECOMMENDATION_TOP_K, RECOMMENDATION_CANDIDATE_POOL_SIZE)`개 조회 후 최종 콜백은 `RECOMMENDATION_TOP_K` 이하로 제한 |
 | 콜백 score는 0.0000~1.0000 범위로 정규화 |
 | 후보 0건이면 추천 사유 생성 없이 FAILED 콜백 전송 |
 | 임베딩 실패 시 검색/LLM을 호출하지 않고 FAILED 콜백 전송 |

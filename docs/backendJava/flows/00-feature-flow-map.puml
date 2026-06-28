@@ -1,0 +1,233 @@
+' 기능 흐름 지도
+' 목적: 기능 변경 시 어떤 Controller, Service, Repository, Entity, Event, Client가 함께 영향을 받는지 빠르게 파악한다.
+
+@startuml write_review_and_recommendation_request
+title 01. 감상문 작성 + 추천 요청 시작
+
+actor "Frontend\nWriteReviewPage" as FE
+participant "UserReviewController" as Controller
+participant "UserReviewService" as Service
+database "UserReviewRepository" as UserReviewRepo
+collections "ApplicationEventPublisher" as EventPublisher
+queue "RecommendationRequestEvent" as Event
+participant "Transaction Manager" as Tx
+participant "RecommendationEventListener\n@Async + AFTER_COMMIT" as Listener
+participant "AiRecommendationClient" as Client
+participant "FastAPI\n/recommend/review" as FastAPI
+
+FE -> Controller: POST /api/user-reviews\nUserReviewRequest
+Controller -> Service: createUserReview(request)
+activate Service
+Service -> UserReviewRepo: save(UserReview)
+UserReviewRepo --> Service: saved UserReview(id, PENDING)
+Service -> EventPublisher: publishEvent(RecommendationRequestEvent)
+EventPublisher -> Event: reviewId, reviewContent, userId
+Service --> Controller: UserReviewCreateResponse(id)
+deactivate Service
+Controller --> FE: 201 ApiResponse(data.id)
+
+Tx -> Listener: after commit event delivery
+activate Listener
+Listener -> Client: requestRecommendation(reviewId, reviewContent, userId)
+activate Client
+Client -> FastAPI: POST /recommend/review\nreview_id, review_content, user_id
+FastAPI --> Client: 2xx accepted
+deactivate Client
+deactivate Listener
+
+note right of Service
+영향 범위 예시:
+- 저장 필드 추가: UserReviewRequest, UserReview, UserReviewService, 테스트
+- FastAPI 요청 필드 추가: RecommendationRequestEvent, RecommendationEventListener, AiRecommendationClient, FastAPI 계약
+- 비동기/트랜잭션 정책 변경: UserReviewService, RecommendationEventListener, AsyncConfig
+end note
+@enduml
+
+@startuml recommendation_callback
+title 02. FastAPI 추천 결과 콜백 저장
+
+participant "FastAPI" as FastAPI
+participant "RecommendAlbumController" as Controller
+participant "RecommendAlbumService" as Service
+database "UserReviewRepository" as UserReviewRepo
+entity "UserReview" as UserReview
+database "RecommendAlbumRepository" as RecommendRepo
+
+FastAPI -> Controller: POST /api/user-reviews/{reviewId}/recommendations\nRecommendAlbumCallbackRequest
+Controller -> Service: createRecommendAlbums(reviewId, request)
+activate Service
+Service -> UserReviewRepo: findById(reviewId)
+UserReviewRepo --> Service: UserReview
+
+alt request.status == FAILED
+    Service -> UserReview: failRecommendation()
+    Service --> Controller: void
+else request.status == COMPLETED
+    Service -> Service: map request.recommendations\nto RecommendAlbum list
+    Service -> RecommendRepo: saveAll(albums)
+    Service -> UserReview: completeRecommendation()
+    Service --> Controller: void
+else unsupported status or null
+    Service --> Controller: IllegalArgumentException
+end
+
+deactivate Service
+Controller --> FastAPI: 2xx if handled
+
+note right of Service
+영향 범위 예시:
+- 콜백 payload 변경: RecommendAlbumCallbackRequest, RecommendAlbumService, 테스트, API_SPEC
+- 추천 저장 필드 추가: RecommendAlbum, RecommendAlbumRepository, RecommendAlbumResponse, DB migration
+- 상태 전이 정책 변경: UserReview, RecommendAlbumService, UserReviewResponse
+end note
+@enduml
+
+@startuml polling_recommendation_result
+title 03. 추천 결과 Polling 조회
+
+actor "Frontend\nReviewBasedRecommendPage" as FE
+participant "UserReviewController" as Controller
+participant "UserReviewService" as Service
+database "UserReviewRepository" as UserReviewRepo
+database "RecommendAlbumRepository" as RecommendRepo
+participant "UserReviewResponse" as ResponseDto
+
+loop polling until COMPLETED or FAILED
+    FE -> Controller: GET /api/user-reviews/{id}
+    Controller -> Service: getUserReview(id)
+    activate Service
+    Service -> UserReviewRepo: findById(id)
+    UserReviewRepo --> Service: UserReview(recommendationStatus)
+
+    alt status == COMPLETED
+        Service -> RecommendRepo: findByUserReviewId(id)
+        RecommendRepo --> Service: List<RecommendAlbum>
+        Service -> ResponseDto: from(review, recommendations)
+    else status == PENDING
+        Service -> ResponseDto: from(review, empty list)
+    else status == FAILED
+        Service -> ResponseDto: from(review, empty list)
+    end
+
+    Service --> Controller: UserReviewResponse
+    deactivate Service
+    Controller --> FE: 200 UserReviewResponse
+end
+
+note right of Service
+GET 조회는 read-only 동작이다.
+PENDING/FAILED 조회에서 이벤트를 재발행하지 않는다.
+
+영향 범위 예시:
+- 화면 표시 필드 추가: UserReviewResponse, RecommendAlbumResponse, Service 분기, 프론트 DTO
+- polling 정책 변경: UserReviewController, UserReviewService, 프론트 polling 로직
+end note
+@enduml
+
+@startuml retry_recommendation
+title 04. 추천 재시도
+
+actor "Frontend\nReviewBasedRecommendPage" as FE
+participant "UserReviewController" as Controller
+participant "UserReviewService" as Service
+database "UserReviewRepository" as UserReviewRepo
+entity "UserReview" as UserReview
+collections "ApplicationEventPublisher" as EventPublisher
+queue "RecommendationRequestEvent" as Event
+participant "Transaction Manager" as Tx
+participant "RecommendationEventListener\n@Async + AFTER_COMMIT" as Listener
+participant "AiRecommendationClient" as Client
+participant "FastAPI" as FastAPI
+
+FE -> Controller: POST /api/user-reviews/{id}/retry
+Controller -> Service: retryRecommendation(id)
+activate Service
+Service -> UserReviewRepo: findById(id)
+UserReviewRepo --> Service: UserReview
+Service -> UserReview: retryRecommendation()\nstatus = PENDING
+Service -> EventPublisher: publishEvent(RecommendationRequestEvent)
+EventPublisher -> Event: reviewId, reviewContent, userId
+Service --> Controller: void
+deactivate Service
+Controller --> FE: 200 ApiResponse<Void>
+
+Tx -> Listener: after commit event delivery
+Listener -> Client: requestRecommendation(reviewId, reviewContent, userId)
+Client -> FastAPI: POST /recommend/review
+
+note right of Service
+영향 범위 예시:
+- retry 허용 조건 변경: UserReview.retryRecommendation(), UserReviewService, 테스트
+- retry 응답 형식 변경: UserReviewController, ApiResponse, API_SPEC, 프론트 처리
+end note
+@enduml
+
+@startuml public_user_reviews
+title 05. 공개 감상문 목록 조회
+
+actor "Frontend\nReview List Page" as FE
+participant "UserReviewController" as Controller
+participant "UserReviewService" as Service
+database "UserReviewRepository" as UserReviewRepo
+participant "UserReviewSummaryResponse" as SummaryDto
+
+FE -> Controller: GET /api/user-reviews?page=&size=
+Controller -> Service: getPublicUserReviews(page, size)
+activate Service
+Service -> UserReviewRepo: findByIsPublicTrueOrderByCreatedAtDesc(PageRequest)
+UserReviewRepo --> Service: Page<UserReview>
+Service -> SummaryDto: from(UserReview)
+Service --> Controller: Page<UserReviewSummaryResponse>
+deactivate Service
+Controller --> FE: 200 Page<UserReviewSummaryResponse>
+
+note right of Service
+영향 범위 예시:
+- 목록 필드 추가: UserReviewSummaryResponse, UserReviewService, 프론트 카드
+- 공개 범위/정렬 변경: UserReviewRepository query, Service, 테스트
+end note
+@enduml
+
+@startuml critics_reviews
+title 06. 전문가 리뷰 목록/상세 조회
+
+actor "Frontend\nCriticsReviewPage" as FE
+participant "CriticsReviewController" as Controller
+participant "CriticsReviewService" as Service
+database "CriticsReviewRepository" as CriticsRepo
+participant "CriticsReviewSummaryResponse" as SummaryDto
+participant "CriticsReviewResponse" as DetailDto
+
+alt 목록 조회
+    FE -> Controller: GET /api/critics?page=&size=
+    Controller -> Service: getReviews(page, size)
+    activate Service
+    Service -> CriticsRepo: findByReviewSummaryIsNotNull(PageRequest)
+    CriticsRepo --> Service: Page<CriticsReview>
+    Service --> Controller: Page<CriticsReview>
+    deactivate Service
+    Controller -> SummaryDto: from(CriticsReview)
+    Controller --> FE: 200 Page<CriticsReviewSummaryResponse>
+else 상세 조회
+    FE -> Controller: GET /api/critics/{id}
+    Controller -> Service: getReview(id)
+    activate Service
+    Service -> CriticsRepo: findById(id)
+    CriticsRepo --> Service: CriticsReview or empty
+    alt exists
+        Service --> Controller: CriticsReview
+        Controller -> DetailDto: from(CriticsReview)
+        Controller --> FE: 200 CriticsReviewResponse
+    else missing
+        Service --> Controller: ResourceNotFoundException
+        Controller --> FE: 404 ErrorResponse
+    end
+    deactivate Service
+end
+
+note right of Service
+영향 범위 예시:
+- 전문가 리뷰 필드 추가: CriticsReview, Summary/Detail DTO, Controller mapping
+- 목록 필터 변경: CriticsReviewRepository, CriticsReviewService, 테스트
+end note
+@enduml

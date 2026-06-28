@@ -130,7 +130,7 @@ FastAPI는 `match_albums`에서 최종 추천 수보다 넉넉한 후보 pool을
 후보 pool 크기:
 
 ```python
-candidate_pool_size = max(RECOMMENDATION_TOP_K, 50)
+candidate_pool_size = max(RECOMMENDATION_TOP_K, RECOMMENDATION_CANDIDATE_POOL_SIZE)
 ```
 
 점수식:

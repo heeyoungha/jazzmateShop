@@ -41,7 +41,7 @@
 │ Spring RecommendationEventListener  │
 │ - @TransactionalEventListener       │
 │ - @Async annotation 존재            │
-│ - @EnableAsync 설정은 현재 없음     │
+│ - @EnableAsync + 전용 executor 적용 │
 │ - AiRecommendationClient            │
 └──┬─────────────────────────────────┘
    │ 4. POST /recommend/review
@@ -153,5 +153,5 @@ Spring thread 압박 또는 외부 callback 경로 지연 의심
 3. docker stats에서는 mock ai-api가 90-105% CPU에 반복적으로 도달했다.
 4. PostgreSQL은 지속적인 connection 고갈보다는 간헐적인 WAL/write wait에 가까웠다.
 5. Spring 로그상 AiRecommendationClient가 Tomcat request thread에서 실행됐다.
-6. @Async annotation은 있지만 @EnableAsync / 전용 TaskExecutor 설정이 없어 의도대로 분리되지 않았을 가능성이 높다.
+6. @EnableAsync + 전용 recommendation executor 적용 후 AiRecommendationClient가 Tomcat thread에서 분리되는지, submit p95가 개선되는지 500 VU 재측정으로 검증한다.
 ```

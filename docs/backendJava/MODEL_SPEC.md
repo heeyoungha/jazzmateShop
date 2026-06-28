@@ -67,8 +67,11 @@
 | No | 필드 | 타입 | 필수 | 설명 |
 |----|------|------|------|------|
 | 1 | albumId | String | COMPLETED일 때 Y | v_embedding_with_album.album_id (= embedding_vectors.id UUID) |
-| 2 | recommendationScore | BigDecimal | COMPLETED일 때 Y | 추천 점수 (precision=5, scale=4) |
-| 3 | recommendationReason | String | COMPLETED일 때 Y | 추천 사유 |
+| 2 | albumArtist | String | COMPLETED일 때 Y | 추천 앨범 아티스트명 |
+| 3 | albumTitle | String | COMPLETED일 때 Y | 추천 앨범 제목 |
+| 4 | recommendationScore | BigDecimal | COMPLETED일 때 Y | 추천 점수 (precision=5, scale=4) |
+| 5 | recommendationReason | String | COMPLETED일 때 Y | 추천 사유 |
+| 6 | criticsReviewId | UUID | COMPLETED일 때 Y | 연결된 평론가 리뷰 ID |
 
 ---
 
@@ -236,10 +239,13 @@
 | 1 | id | id | Integer | PK (SERIAL) |
 | 2 | userReviewId | user_review_id | Integer | 감상문 ID (NOT NULL) |
 | 3 | albumId | album_id | String | v_embedding_with_album.album_id UUID (NOT NULL) |
-| 4 | recommendationScore | recommendation_score | BigDecimal(5,4) | 추천 점수 (NOT NULL) |
-| 5 | recommendationReason | recommendation_reason | TEXT | 추천 사유 (NOT NULL) |
-| 6 | createdAt | created_at | LocalDateTime | @CreationTimestamp |
-| 7 | updatedAt | updated_at | LocalDateTime | @UpdateTimestamp |
+| 4 | criticsReviewId | critics_review_id | UUID | 연결된 평론가 리뷰 ID (NOT NULL) |
+| 5 | albumArtist | album_artist | String | 추천 앨범 아티스트명 (NOT NULL) |
+| 6 | albumTitle | album_title | String | 추천 앨범 제목 (NOT NULL) |
+| 7 | recommendationScore | recommendation_score | BigDecimal(5,4) | 추천 점수 (NOT NULL) |
+| 8 | recommendationReason | recommendation_reason | TEXT | 추천 사유 (NOT NULL) |
+| 9 | createdAt | created_at | LocalDateTime | @CreationTimestamp |
+| 10 | updatedAt | updated_at | LocalDateTime | @UpdateTimestamp |
 
 ---
 

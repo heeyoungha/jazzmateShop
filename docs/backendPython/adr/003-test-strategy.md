@@ -69,6 +69,7 @@ OpenAI, Supabase, Spring Boot는 기본 테스트에서 fake/mock으로 대체�
 - `request.app.state`에 필수 app-scoped 리소스가 없거나 `None`이면 dependency provider가 명확한 설정 오류를 발생시킨다.
 - lifespan 테스트는 app startup에서 필수 client가 `app.state`에 등록되고 shutdown에서 닫히는지 fake close hook으로 검증한다.
 - Service 단위 테스트는 fake repository를 생성자에 직접 주입한다. Service 기본 생성자가 운영용 Repository를 `database=None`으로 만드는 경로에 의존하지 않는다.
+- Service 생성자는 dependency provider가 조립한 내부 협력 객체를 신뢰한다. 모든 내부 의존성에 Java식 `None` guard를 반복하기보다, provider/wiring 테스트로 조립 계약을 고정한다.
 - Router 테스트는 `app.dependency_overrides`로 service provider를 교체해 HTTP 계약만 검증하고, dependency wiring 테스트와 책임을 섞지 않는다.
 
 권장 테스트 파일:
@@ -165,6 +166,10 @@ pytest 테스트는 다음 기준으로 작성한다.
 | FastAPI endpoint 의존성 교체 | 구현 클래스 monkeypatch보다 `app.dependency_overrides`를 우선 사용한다. |
 | App-scoped 리소스 | endpoint 테스트에서 직접 만들지 않고 lifespan 또는 dependency override로 제공한다. |
 | 필수 의존성 누락 | `NoneType` AttributeError가 아니라 설정 누락 예외를 검증한다. |
+| Trust Boundary | DB/API/env/app.state처럼 외부 입력 또는 런타임 조립 경계에서는 `None`, 타입, 차원, 필수값을 명시적으로 검증한다. |
+| 내부 계약 | 이미 검증된 내부 객체 간 호출은 중복 방어보다 wiring/service 테스트로 계약을 고정한다. |
+| 불변 값 객체 | DB row를 내부 모델로 변환할 때 list/dict 같은 가변 응답은 `tuple`, `frozen=True` dataclass 같은 불변 타입으로 정규화하고 테스트한다. |
+| 벡터 계산 | `zip()` 기반 계산은 길이 불일치를 조용히 잘라낼 수 있으므로, 계산 전 `settings.EMBEDDING_DIMENSIONS` 검증과 실패 케이스를 테스트한다. |
 
 ### Rationale
 
@@ -185,6 +190,12 @@ Service 내부 순수 로직 테스트는 생성자에 fake를 직접 주입해�
 
 필수 의존성 누락 테스트는 나중에 우연히 발생하는 `AttributeError`를 기대하지 않는다.
 예를 들어 DB client가 없으면 Repository 조회 메서드 내부의 `database.from_()`까지 진행되기 전에, 생성자나 dependency provider에서 설정 누락 예외가 발생해야 한다.
+
+Python의 타입 힌트는 런타임 계약을 강제하지 않으므로 외부 신뢰 경계에서는 guard clause와 명시적 예외를 사용한다.
+반면 dependency provider가 조립한 Service 내부 협력 객체는 모든 생성자에서 `None`을 반복 검증하지 않고, provider/wiring 테스트와 fake 주입 테스트로 계약을 고정한다.
+
+Repository가 외부 DB row를 내부 값 객체로 변환할 때는 가변 응답을 그대로 흘려보내지 않는다.
+예를 들어 `genres`는 `tuple[str, ...]`로 정규화하고, 메타데이터 DTO는 `frozen=True` dataclass로 두어 서비스 레이어에서 불변 값으로 다룬다.
 
 ### Examples
 
@@ -261,6 +272,36 @@ class FakeEmbeddingService:
 - `MagicMock`은 존재하지 않는 메서드도 호출을 허용한다. Fake는 정의한 메서드만 호출할 수 있어 인터페이스 계약을 더 엄격하게 검증한다.
 - 여러 파일에서 Fake가 중복되면 `tests/fakes.py`로 분리한다 (Decision 5 참고).
 - `monkeypatch`와 `pytest-mock`은 환경변수, 시간, 랜덤값처럼 Fake로 표현하기 어려운 경계에 제한적으로 사용한다.
+
+---
+
+## 테스트 파일 인덱스
+
+### unit/
+
+| 파일 | 레이어 | 검증 내용 |
+|---|---|---|
+| `test_config.py` | 설정 | 환경변수 로딩, 필수값 누락 시 ConfigurationError |
+| `test_recommend_request_dto.py` | Schema/DTO | inbound 필드명·필수값·공백 trim·비정상값 거부 |
+| `test_recommendation_schema.py` | Schema/DTO | outbound camelCase 직렬화, 성공/실패 콜백 구조, AlbumCandidate 생성 계약 |
+| `test_embedding_service.py` | Client | OpenAI client 누락 시 ConfigurationError, 임베딩 호출 계약 |
+| `test_recommendation_reason_service.py` | Client | OpenAI client 누락 시 ConfigurationError, 이유 생성 및 fallback 계약 |
+| `test_spring_callback_client.py` | Client | HTTP client 누락 ConfigurationError, POST URL·payload·camelCase, 4xx/5xx/timeout → CallbackError |
+| `test_album_embedding_repository.py` | Repository | DB client 누락 ConfigurationError, View 조회·파싱·차원 검증 |
+| `test_user_listened_album_repository.py` | Repository | DB client 누락 ConfigurationError, 청취 이력 조회·임베딩 파싱·차원 검증 |
+| `test_album_metadata_repository.py` | Repository | DB client 누락 ConfigurationError, MusicBrainz 메타 조회·genres 파싱 |
+| `test_user_taste_metadata_repository.py` | Repository | DB client 누락 ConfigurationError, 사용자 취향 메타 조회·genres 파싱 |
+| `test_taste_vector_service.py` | 순수 로직 | 60/40 블렌딩 가중치, 청취 이력 없을 때 감상문 벡터 단독 사용, 차원·가중치 검증 |
+| `test_recommendation_rerank_service.py` | 순수 로직 | 메타 기반 재순위, 메타 없을 때 벡터 점수 유지, 빈 메타 시 원래 순서 유지 |
+| `test_recommendation_service.py` | Service | 성공·실패(임베딩/검색/이유생성/메타/콜백) 유스케이스 분기, 취향 벡터 블렌딩, 후보 풀 재순위 |
+| `test_dependencies.py` | Dependency wiring | FastAPI provider가 app.state 리소스를 Service에 주입, 누락 시 ConfigurationError |
+| `test_lifespan.py` | Dependency wiring | app startup에서 client 등록, shutdown에서 close hook 호출 |
+
+### integration/
+
+| 파일 | 레이어 | 검증 내용 |
+|---|---|---|
+| `test_recommendation_flow.py` | 통합 플로우 | HTTP 입력값이 Service까지 손실 없이 전달되는지, user_id 누락 시 422 |
 
 ---
 
