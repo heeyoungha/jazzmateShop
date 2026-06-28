@@ -64,6 +64,7 @@ class UserReviewControllerTest {
                             .content(objectMapper.writeValueAsString(Map.of(
                                     "albumName", "Kind of Blue",
                                     "artistName", "Miles Davis",
+                                    "userId", "1",
                                     "reviewContent", "재즈의 정수"
                             ))))
                     .andExpect(status().isCreated())
@@ -79,6 +80,7 @@ class UserReviewControllerTest {
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(Map.of(
                                     "artistName", "Miles Davis",
+                                    "userId", "1",
                                     "reviewContent", "재즈의 정수"
                             ))))
                     .andExpect(status().isBadRequest())
@@ -92,6 +94,7 @@ class UserReviewControllerTest {
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(Map.of(
                                     "albumName", "Kind of Blue",
+                                    "userId", "1",
                                     "reviewContent", "재즈의 정수"
                             ))))
                     .andExpect(status().isBadRequest())
@@ -105,7 +108,22 @@ class UserReviewControllerTest {
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(Map.of(
                                     "albumName", "Kind of Blue",
-                                    "artistName", "Miles Davis"
+                                    "artistName", "Miles Davis",
+                                    "userId", "1"
+                            ))))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.success").value(false));
+        }
+
+        @Test
+        @DisplayName("userId 누락 → HTTP 400, success=false")
+        void create_missingUserId_returns400() throws Exception {
+            mockMvc.perform(post("/api/user-reviews")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(Map.of(
+                                    "albumName", "Kind of Blue",
+                                    "artistName", "Miles Davis",
+                                    "reviewContent", "재즈의 정수"
                             ))))
                     .andExpect(status().isBadRequest())
                     .andExpect(jsonPath("$.success").value(false));

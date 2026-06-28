@@ -42,6 +42,24 @@ class GlobalExceptionHandlerTest {
         String body = objectMapper.writeValueAsString(Map.of(
                 "albumName", "",           // @NotBlank 위반
                 "artistName", "Miles Davis",
+                "userId", "1",
+                "reviewContent", "재즈의 정수"
+        ));
+
+        mockMvc.perform(post("/api/user-reviews")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.message").isNotEmpty());
+    }
+
+    @Test
+    @DisplayName("userId 검증 실패 → 400, success=false")
+    void userIdValidationError_returns400() throws Exception {
+        String body = objectMapper.writeValueAsString(Map.of(
+                "albumName", "Kind of Blue",
+                "artistName", "Miles Davis",
                 "reviewContent", "재즈의 정수"
         ));
 
@@ -66,6 +84,15 @@ class GlobalExceptionHandlerTest {
     }
 
     @Test
+    @DisplayName("정적 리소스 없음 → 404, 서버 오류로 기록하지 않음")
+    void noResourceFound_returns404() throws Exception {
+        mockMvc.perform(get("/favicon.ico"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.message").value("요청한 리소스를 찾을 수 없습니다."));
+    }
+
+    @Test
     @DisplayName("RuntimeException → 500, success=false, 서버 오류 메시지")
     void unexpectedException_returns500() throws Exception {
         given(userReviewService.createUserReview(any(UserReviewRequest.class)))
@@ -74,6 +101,7 @@ class GlobalExceptionHandlerTest {
         String body = objectMapper.writeValueAsString(Map.of(
                 "albumName", "Kind of Blue",
                 "artistName", "Miles Davis",
+                "userId", "1",
                 "reviewContent", "재즈의 정수"
         ));
 

@@ -18,6 +18,10 @@ public class RecommendationEventListener {
     @Async(AsyncConfig.RECOMMENDATION_TASK_EXECUTOR)
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void requestRecommendation(RecommendationRequestEvent event) {
-        aiRecommendationClient.requestRecommendation(event.reviewId(), event.reviewContent());
+        aiRecommendationClient.requestRecommendation(
+                event.reviewId(),
+                event.reviewContent(),
+                event.userId()
+        );
     }
 }

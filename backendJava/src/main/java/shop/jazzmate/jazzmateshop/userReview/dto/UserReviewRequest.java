@@ -21,6 +21,7 @@ public class UserReviewRequest {
     private String reviewContent;
     
     // TODO: JWT 인증 구현 후 토큰에서 추출 예정
+    @NotBlank
     private String userId;
     
     private UUID mbAlbumGid;

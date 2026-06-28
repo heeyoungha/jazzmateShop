@@ -46,7 +46,11 @@ public class UserReviewService {
                 .build();
 
         UserReview saved = userReviewRepository.save(review);
-        eventPublisher.publishEvent(new RecommendationRequestEvent(saved.getId(), saved.getReviewContent()));
+        eventPublisher.publishEvent(new RecommendationRequestEvent(
+                saved.getId(),
+                saved.getReviewContent(),
+                saved.getUserId()
+        ));
 
         return UserReviewCreateResponse.from(saved);
     }
@@ -64,7 +68,11 @@ public class UserReviewService {
                 .orElseThrow(() -> new ResourceNotFoundException("UserReview not found: " + id));
 
         review.retryRecommendation();
-        eventPublisher.publishEvent(new RecommendationRequestEvent(review.getId(), review.getReviewContent()));
+        eventPublisher.publishEvent(new RecommendationRequestEvent(
+                review.getId(),
+                review.getReviewContent(),
+                review.getUserId()
+        ));
     }
 
     @Transactional(readOnly = true)

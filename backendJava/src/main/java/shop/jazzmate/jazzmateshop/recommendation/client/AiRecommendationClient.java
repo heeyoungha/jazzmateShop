@@ -27,12 +27,16 @@ public class AiRecommendationClient {
                 .build();
     }
 
-    public void requestRecommendation(Integer reviewId, String reviewContent) {
+    public void requestRecommendation(Integer reviewId, String reviewContent, String userId) {
         try {
             ResponseEntity<Void> response = restClient.post()
                     .uri("/recommend/review")
                     .contentType(MediaType.APPLICATION_JSON)
-                    .body(Map.of("review_id", reviewId, "review_content", reviewContent))
+                    .body(Map.of(
+                            "review_id", reviewId,
+                            "review_content", reviewContent,
+                            "user_id", userId
+                    ))
                     .retrieve()
                     .toBodilessEntity();
             log.info("FastAPI 추천 요청 전송 완료: reviewId={}, status={}", reviewId, response.getStatusCode());

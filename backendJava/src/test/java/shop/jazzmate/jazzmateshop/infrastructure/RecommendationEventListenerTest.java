@@ -35,12 +35,12 @@ class RecommendationEventListenerTest {
         @DisplayName("AiRecommendationClient.requestRecommendation 정확한 파라미터로 호출")
         void requestRecommendation_delegatesToClient() {
             RecommendationRequestEvent event =
-                    new RecommendationRequestEvent(42, "명반 중의 명반, 재즈의 정수");
+                    new RecommendationRequestEvent(42, "명반 중의 명반, 재즈의 정수", "1");
 
             recommendationEventListener.requestRecommendation(event);
 
             verify(aiRecommendationClient, times(1))
-                    .requestRecommendation(42, "명반 중의 명반, 재즈의 정수");
+                    .requestRecommendation(42, "명반 중의 명반, 재즈의 정수", "1");
         }
     }
 }

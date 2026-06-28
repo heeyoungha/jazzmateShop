@@ -67,6 +67,7 @@ class UserReviewServiceTest {
     // 공통 픽스처
     private final UserReview DEFAULT_SAVED = UserReview.builder()
             .id(1)
+            .userId("1")
             .albumName("So What")
             .artistName("Miles Davis")
             .reviewContent("명반")
@@ -100,7 +101,7 @@ class UserReviewServiceTest {
         }
 
         @Test
-        @DisplayName("저장 후 RecommendationRequestEvent 발행 — reviewId, reviewContent 포함")
+        @DisplayName("저장 후 RecommendationRequestEvent 발행 — reviewId, reviewContent, userId 포함")
         void create_publishesRecommendationRequestEvent() {
             // given: @BeforeEach에서 save() stubbing 완료
 
@@ -116,6 +117,7 @@ class UserReviewServiceTest {
             RecommendationRequestEvent event = captor.getValue();
             assertThat(event.reviewId()).isEqualTo(DEFAULT_SAVED.getId());
             assertThat(event.reviewContent()).isEqualTo(DEFAULT_SAVED.getReviewContent());
+            assertThat(event.userId()).isEqualTo(DEFAULT_SAVED.getUserId());
         }
 
         @Test
