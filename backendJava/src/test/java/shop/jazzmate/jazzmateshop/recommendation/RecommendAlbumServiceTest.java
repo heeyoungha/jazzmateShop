@@ -133,11 +133,11 @@ class RecommendAlbumServiceTest {
         for (String albumId : albumIds) {
             items.add(new RecommendAlbumCallbackRequest.Item(
                     albumId,
-                    null,
-                    null,
+                    "Miles Davis",
+                    "Kind of Blue",
                     new BigDecimal("0.9500"),
                     "분위기가 잘 맞습니다",
-                    null
+                    UUID.fromString("00000000-0000-0000-0000-000000001001")
             ));
         }
         return new RecommendAlbumCallbackRequest(

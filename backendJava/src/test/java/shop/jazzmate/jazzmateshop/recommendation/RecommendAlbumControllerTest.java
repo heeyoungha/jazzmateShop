@@ -17,6 +17,7 @@ import java.util.Map;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -48,12 +49,52 @@ class RecommendAlbumControllerTest {
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(Map.of(
                                     "status", "COMPLETED",
-                                    "recommendations", java.util.List.of()
+                                    "recommendations", java.util.List.of(Map.of(
+                                            "albumId", "00000000-0000-0000-0000-000000000101",
+                                            "albumArtist", "Miles Davis",
+                                            "albumTitle", "Kind of Blue",
+                                            "recommendationScore", "0.9423",
+                                            "recommendationReason", "모달 재즈 특유의 정적인 분위기가 유사합니다.",
+                                            "criticsReviewId", "00000000-0000-0000-0000-000000001001"
+                                    ))
                             ))))
                     .andExpect(status().isOk())
                     .andExpect(content().string(""));
 
             verify(recommendAlbumService).createRecommendAlbums(eq(REVIEW_ID), any(RecommendAlbumCallbackRequest.class));
+        }
+
+        @Test
+        @DisplayName("COMPLETED 콜백 추천 항목 필수값 누락 → HTTP 400, service 미호출")
+        void createRecommendations_completedCallbackMissingDisplayFields_returns400() throws Exception {
+            mockMvc.perform(post("/api/user-reviews/{reviewId}/recommendations", REVIEW_ID)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(Map.of(
+                                    "status", "COMPLETED",
+                                    "recommendations", java.util.List.of(Map.of(
+                                            "albumId", "00000000-0000-0000-0000-000000000101",
+                                            "recommendationScore", "0.9423",
+                                            "recommendationReason", "모달 재즈 특유의 정적인 분위기가 유사합니다.",
+                                            "criticsReviewId", "00000000-0000-0000-0000-000000001001"
+                                    ))
+                            ))))
+                    .andExpect(status().isBadRequest());
+
+            verify(recommendAlbumService, never()).createRecommendAlbums(eq(REVIEW_ID), any(RecommendAlbumCallbackRequest.class));
+        }
+
+        @Test
+        @DisplayName("COMPLETED 콜백 빈 추천 목록 → HTTP 400, service 미호출")
+        void createRecommendations_completedCallbackEmptyRecommendations_returns400() throws Exception {
+            mockMvc.perform(post("/api/user-reviews/{reviewId}/recommendations", REVIEW_ID)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(Map.of(
+                                    "status", "COMPLETED",
+                                    "recommendations", java.util.List.of()
+                            ))))
+                    .andExpect(status().isBadRequest());
+
+            verify(recommendAlbumService, never()).createRecommendAlbums(eq(REVIEW_ID), any(RecommendAlbumCallbackRequest.class));
         }
 
         @Test

@@ -32,7 +32,8 @@ class RecommendAlbumCallbackRequestTest {
                           "albumArtist": "Miles Davis",
                           "albumTitle": "Kind of Blue",
                           "recommendationScore": 0.9423,
-                          "recommendationReason": "모달 재즈 특유의 정적인 분위기가 유사합니다."
+                          "recommendationReason": "모달 재즈 특유의 정적인 분위기가 유사합니다.",
+                          "criticsReviewId": "00000000-0000-0000-0000-000000001001"
                         }
                       ]
                     }
@@ -49,6 +50,8 @@ class RecommendAlbumCallbackRequestTest {
             assertThat(request.getRecommendations().get(0).getRecommendationScore()).isEqualByComparingTo("0.9423");
             assertThat(request.getRecommendations().get(0).getRecommendationReason())
                     .isEqualTo("모달 재즈 특유의 정적인 분위기가 유사합니다.");
+            assertThat(request.getRecommendations().get(0).getCriticsReviewId())
+                    .isEqualTo(java.util.UUID.fromString("00000000-0000-0000-0000-000000001001"));
             assertThat(request.getErrorCode()).isNull();
             assertThat(request.getMessage()).isNull();
         }
