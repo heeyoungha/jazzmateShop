@@ -12,6 +12,7 @@ REQUIRED_ENV = {
     "OPENAI_CHAT_MODEL": "gpt-4o-mini",
     "EMBEDDING_DIMENSIONS": "1536",
     "RECOMMENDATION_TOP_K": "3",
+    "RECOMMENDATION_CANDIDATE_POOL_SIZE": "50",
     "SPRING_BASE_URL": "http://java-backend:8080",
     "OPENAI_TIMEOUT_SECONDS": "30",
     "OPENAI_MAX_RETRIES": "2",
@@ -48,6 +49,7 @@ def test_settings_reads_environment_values(monkeypatch):
         {
             "EMBEDDING_DIMENSIONS": "8",
             "RECOMMENDATION_TOP_K": "5",
+            "RECOMMENDATION_CANDIDATE_POOL_SIZE": "20",
             "OPENAI_TIMEOUT_SECONDS": "12.5",
             "OPENAI_MAX_RETRIES": "4",
         },
@@ -63,6 +65,7 @@ def test_settings_reads_environment_values(monkeypatch):
     assert reloaded.settings.OPENAI_CHAT_MODEL == "gpt-4o-mini"
     assert reloaded.settings.EMBEDDING_DIMENSIONS == 8
     assert reloaded.settings.RECOMMENDATION_TOP_K == 5
+    assert reloaded.settings.RECOMMENDATION_CANDIDATE_POOL_SIZE == 20
     assert reloaded.settings.SPRING_BASE_URL == "http://java-backend:8080"
     assert reloaded.settings.OPENAI_TIMEOUT_SECONDS == 12.5
     assert reloaded.settings.OPENAI_MAX_RETRIES == 4
