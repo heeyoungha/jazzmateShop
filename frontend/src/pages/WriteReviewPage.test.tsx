@@ -176,6 +176,7 @@ describe("WriteReviewPage", () => {
         "20000000-0000-0000-0000-000000000001",
       ),
     );
+    expect(requestBody?.userId).toBe("1");
   });
 
   it("4. 앨범을 선택하지 않으면 mbAlbumGid를 null로 전송한다", async () => {
@@ -198,5 +199,6 @@ describe("WriteReviewPage", () => {
     await user.click(screen.getByRole("button", { name: "감상문 저장하기" }));
 
     await waitFor(() => expect(requestBody?.mbAlbumGid).toBeNull());
+    expect(requestBody?.userId).toBe("1");
   });
 });

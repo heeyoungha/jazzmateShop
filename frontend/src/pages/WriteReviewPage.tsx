@@ -13,6 +13,8 @@ interface ApiResponse<T> {
   data: T;
 }
 
+const TEMP_USER_ID = "1";
+
 export function WriteReviewPage() {
   const navigate = useNavigate();
   const [submitting, setSubmitting] = useState(false);
@@ -26,7 +28,7 @@ export function WriteReviewPage() {
       const res = await fetch("/api/user-reviews", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
+        body: JSON.stringify({ ...data, userId: TEMP_USER_ID }),
       });
 
       const json = (await res.json()) as ApiResponse<CreateReviewResponse>;
