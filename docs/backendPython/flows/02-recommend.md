@@ -15,6 +15,14 @@
 **유사도 검색**
 - 유사도 검색 대상은 `album_reference`로 고정한다.
 - 추천 수는 `config.RECOMMENDATION_TOP_K` (기본값 3)로 관리한다. 변경 시 이 값만 수정한다.
+- 메타 재순위를 위해 `match_albums()` 후보는 `max(RECOMMENDATION_TOP_K, 50)`개 조회한다.
+
+**MusicBrainz 메타 재순위**
+- `user_reviews.mb_album_gid`로 사용자의 기존 감상 이력 `mb_album` 메타를 조회한다.
+- 후보는 `album_reference.id` → `mb_release_group_id` → `mb_album.gid`로 메타를 조회한다.
+- 재순위 기준은 artist / genres / first_release_year다.
+- 최종 점수는 `vector_score * 0.80 + meta_score * 0.20`이다.
+- 메타 조회 실패 시 추천 실패가 아니라 기존 벡터 순서로 fallback한다.
 
 **추천 사유 생성**
 - 추천 사유는 유사도 검색 결과와 `review_content`를 함께 사용해 생성한다.
@@ -36,31 +44,82 @@ participant "EmbeddingService" as ES
 participant "UserListenedAlbumRepository" as RAR
 participant "TasteVectorService" as TV
 participant "SimilaritySearch" as AER
+participant "UserTasteMetadataRepository" as UMR
+participant "AlbumMetadataRepository" as AMR
+participant "RecommendationRerankService" as RERANK
 participant "RecommendationReasonService" as RRS
 participant "SpringCallbackClient" as CC
 
 RS -> ES : embed_review(review_content)
+note right of ES
+  사용자 감상문 본문을
+  OpenAI embedding vector로 변환
+end note
 ES --> RS : review_embedding
 
 RS -> RAR : find_by_user_id(user_id)
+note right of RAR
+  user_id로 user_reviews 조회
+  mb_album_gid가 있는 기존 감상 앨범을 찾고
+  album_reference.embedding으로 연결되는 벡터만 반환
+end note
 RAR --> RS : reviewed_album_embeddings
 
 alt #LightGreen 감상 앨범 있음
   RS -> TV : build_query_vector(review_embedding, reviewed_album_embeddings)
+  note right of TV
+    신규 감상문 embedding 60%
+    기존 감상 앨범 평균 embedding 40%
+    비율로 검색 벡터 생성
+  end note
   TV --> RS : query_vector (60% + 40% 블렌딩)
 else #LightYellow 감상 앨범 없음 (폴백)
+  note over RS
+    사용자가 선택한 앨범이 album_reference에 없거나
+    embedding이 없으면 review_embedding만 사용
+  end note
   RS -> RS : query_vector = review_embedding
 end
 
-RS -> AER : find_similar_albums(query_vector, top_k)
-note right of AER : 네트워크/DB 오류 시\nsend_failed_result() 콜백
+RS -> AER : find_similar_albums(query_vector, max(top_k, 50))
+note right of AER
+  query_vector로 match_albums() RPC 호출
+  album_reference.embedding 기준 유사 후보 pool 조회
+  네트워크/DB 오류 시 send_failed_result() 콜백
+end note
 AER --> RS : candidates[]
 
 alt #LightYellow 후보 없음
   note over RS : top-k 방식이므로 album_reference가\n비어있지 않으면 실질적으로 발생 안 함
   RS -> CC : send_failed_result(NO_CANDIDATES)
 else #LightGreen 후보 있음
-  RS -> RRS : generate_reasons(review_content, candidates)
+  RS -> UMR : find_by_user_id(user_id)
+  note right of UMR
+    user_id로 user_reviews.mb_album_gid 조회
+    mb_album에서 artist_name, genres, first_release_year 조회
+    embedding 연결 여부와 무관하게 사용자 메타 취향 생성
+  end note
+  UMR --> RS : user_metadata[]
+  RS -> AMR : find_by_album_reference_ids(candidate.album_id[])
+  note right of AMR
+    위에서 받은 후보 album_reference.id 목록으로
+    mb_release_group_id를 찾고
+    mb_album 메타를 조회
+  end note
+  AMR --> RS : candidate_metadata_by_album_id
+  RS -> RERANK : rerank(candidates, user_metadata, candidate_metadata, top_k)
+  note right of RERANK
+    vector_score 80%
+    artist / genre / era 메타 점수 20%
+    기준으로 최종 top_k 재정렬
+  end note
+  RERANK --> RS : reranked top_k candidates
+  RS -> RRS : generate_reasons(review_content, reranked candidates)
+  note right of RRS
+    최종 추천 후보별로
+    사용자 감상문과 평론가 리뷰 정보를 사용해
+    추천 사유 생성
+  end note
   RRS --> RS : reasons[]
   RS -> CC : send_completed_result(review_id, recommendations[])
 end
@@ -74,9 +133,12 @@ end
 | 1 | `embedding_service` | 감상문 임베딩 생성 | review_content | embedding vector | OpenAI Python SDK Embeddings API |
 | 2 | `user_listened_album_repository` | 사용자 감상 앨범 임베딩 조회 | user_id | embedding[] | user_reviews → album_reference SELECT |
 | 3 | `taste_vector_service` | 감상문 + 취향 벡터 블렌딩 | review_embedding, reviewed_album_embeddings | query_vector | - |
-| 4 | `similarity_search` | `album_reference` 유사도 검색 | query_vector | TOP K 앨범 | match_albums() RPC |
-| 5 | `recommendation_reason_service` | 앨범별 추천 사유 생성 | review_content, TOP K 앨범 | recommendationReason 목록 | OpenAI Python SDK Chat API |
-| 6 | `callback_client` | Spring 처리 결과 콜백 전송 | review_id, COMPLETED/FAILED 결과 | - | POST Spring /api/user-reviews/{id}/recommendations |
+| 4 | `similarity_search` | `album_reference` 유사도 검색 | query_vector | 후보 pool | match_albums() RPC |
+| 5 | `user_taste_metadata_repository` | 사용자 기존 감상 이력 메타 조회 | user_id | AlbumMetadata[] | user_reviews → mb_album SELECT |
+| 6 | `album_metadata_repository` | 후보 앨범 메타 조회 | album_reference id[] | album_id별 AlbumMetadata | album_reference → mb_album SELECT |
+| 7 | `recommendation_rerank_service` | artist / genre / era 기반 재순위 | 후보 pool, 사용자 메타, 후보 메타 | TOP K 앨범 | - |
+| 8 | `recommendation_reason_service` | 앨범별 추천 사유 생성 | review_content, TOP K 앨범 | recommendationReason 목록 | OpenAI Python SDK Chat API |
+| 9 | `callback_client` | Spring 처리 결과 콜백 전송 | review_id, COMPLETED/FAILED 결과 | - | POST Spring /api/user-reviews/{id}/recommendations |
 
 ## 테스트 시나리오
 
@@ -102,15 +164,17 @@ end
 
 | 시나리오 |
 |----------|
-| 성공 경로는 임베딩 생성, 취향 벡터 합산, TOP K 검색, 추천 사유 생성, Spring 콜백까지 수행 |
-| TOP K 검색은 `RECOMMENDATION_TOP_K` 설정값 사용 |
+| 성공 경로는 임베딩 생성, 취향 벡터 합산, 후보 pool 검색, 메타 재순위, 추천 사유 생성, Spring 콜백까지 수행 |
+| 후보 검색은 `max(RECOMMENDATION_TOP_K, 50)`개 조회 후 최종 콜백은 `RECOMMENDATION_TOP_K` 이하로 제한 |
 | 콜백 score는 0.0000~1.0000 범위로 정규화 |
 | 후보 0건이면 추천 사유 생성 없이 FAILED 콜백 전송 |
 | 임베딩 실패 시 검색/LLM을 호출하지 않고 FAILED 콜백 전송 |
 | 유사도 검색 실패 시 LLM을 호출하지 않고 FAILED 콜백 전송 |
-| 콜백 전송 실패는 별도 결정 전까지 로그만 기록 |
+| 콜백 전송 실패는 자동 재시도나 예외 전파 없이 로그만 기록 |
 | user_id가 있고 매칭 앨범이 있으면 TasteVectorService로 블렌딩된 벡터로 검색 |
 | user_id가 있어도 매칭 앨범이 없으면 review embedding 100%로 검색 |
+| 메타 조회 실패는 기존 벡터 순서 fallback으로 처리 |
+| 기존 감상 embedding 조회 실패는 감상문 embedding 검색으로 fallback |
 
 ### Repository — `AlbumEmbeddingRepositoryTest`
 
@@ -129,12 +193,44 @@ end
 | user_id로 조회한 앨범의 embedding을 중복 제거 후 반환 |
 | 감상한 앨범이 없으면 빈 리스트 반환 |
 
+### Repository — `UserTasteMetadataRepositoryTest`
+
+| 시나리오 |
+|----------|
+| user_id로 조회한 `mb_album_gid`를 중복 제거 후 `mb_album` 메타로 반환 |
+| 선택된 MusicBrainz 앨범이 없으면 빈 리스트 반환 |
+| genres 응답 형식이 깨지면 RepositoryError로 변환 |
+
+### Repository — `AlbumMetadataRepositoryTest`
+
+| 시나리오 |
+|----------|
+| `album_reference.id` 후보를 `mb_release_group_id`를 거쳐 `mb_album` 메타로 매핑 |
+| 후보 id가 없으면 DB를 조회하지 않음 |
+| 후보 메타 genres 응답 형식이 깨지면 RepositoryError로 변환 |
+
+### Service — `RecommendationRerankServiceTest`
+
+| 시나리오 |
+|----------|
+| 벡터 점수가 근접하면 사용자 메타 취향과 맞는 후보를 위로 올림 |
+| 사용자 메타 프로필이 없으면 기존 벡터 순서를 유지 |
+| 후보 메타가 없으면 해당 후보는 벡터 점수만 사용 |
+
 ### Service — `TasteVectorServiceTest`
 
 | 시나리오 |
 |----------|
 | 감상문 임베딩(60%)과 감상 앨범 임베딩 평균(40%)을 블렌딩 |
 | 감상 앨범이 없으면 감상문 임베딩 그대로 반환 |
+
+### DTO — `RecommendByReviewRequestTest`
+
+| 시나리오 |
+|----------|
+| `user_id` 누락 시 validation error 발생 |
+| `user_id` 앞뒤 공백 제거 |
+| 빈 문자열 또는 공백뿐인 `user_id`는 validation error 발생 |
 
 ### API Dependency — `RecommendationDependencyTest`
 

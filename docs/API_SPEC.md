@@ -73,8 +73,10 @@ Content-Type: application/json
 
 ```json
 {
-  "trackName": "So What",
+  "albumName": "So What",
   "artistName": "Miles Davis",
+  "mbAlbumGid": "00000000-0000-0000-0000-000000000101",
+  "userId": "1",
   "reviewContent": "처음 들었을 때의 그 고요함이 아직도 기억난다.",
   "rating": 4.5,
   "mood": "calm",
@@ -89,8 +91,10 @@ Content-Type: application/json
 
 | 필드 | 필수 | 설명 |
 |------|------|------|
-| trackName | Y | `@NotBlank` |
+| albumName | Y | `@NotBlank` |
 | artistName | Y | `@NotBlank` |
+| mbAlbumGid | N | 사용자가 MusicBrainz 앨범 검색 결과에서 선택한 `mb_album.gid`. 선택하지 않으면 `NULL` |
+| userId | Y | `@NotBlank`, 인증 도입 전까지 요청 body에서 전달 |
 | reviewContent | Y | `@NotBlank` |
 | rating ~ isPublic | N | 선택 필드 |
 
@@ -108,10 +112,10 @@ Content-Type: application/json
 
 > 프론트 의존 필드: `data.id` — `navigate(/recommend/${data.id})`에 사용
 
-**Response `400`** — trackName 누락 등
+**Response `400`** — albumName, userId 누락 등
 
 ```json
-{ "success": false, "message": "trackName은 필수입니다." }
+{ "success": false, "message": "albumName: must not be blank" }
 ```
 
 ---
@@ -272,14 +276,24 @@ Content-Type: application/json
 ```json
 {
   "review_id": 42,
-  "review_content": "처음 들었을 때의 그 고요함이 아직도 기억난다."
+  "review_content": "처음 들었을 때의 그 고요함이 아직도 기억난다.",
+  "user_id": "1"
 }
 ```
 
-| 필드 | 설명 |
-|------|------|
-| review_id | `user_reviews.id` — FastAPI가 콜백 시 `reviewId` path variable로 사용 |
-| review_content | 감상문 본문 — 임베딩 및 유사도 계산에 사용 |
+| 필드 | 필수 | 설명 |
+|------|------|------|
+| review_id | Y | `user_reviews.id` — FastAPI가 콜백 시 `reviewId` path variable로 사용 |
+| review_content | Y | 감상문 본문 — 임베딩 및 유사도 계산에 사용 |
+| user_id | Y | 사용자 식별자 — 기존 감상 이력 기반 취향 벡터와 MusicBrainz 메타 재순위에 사용 |
+
+**FastAPI 내부 처리 정책**
+
+- 감상문 embedding을 생성한다.
+- 사용자의 기존 감상 앨범 embedding이 있으면 감상문 embedding과 취향 벡터를 블렌딩한다.
+- `match_albums()`로 후보를 최종 추천 수보다 넉넉히 조회한다.
+- 사용자 기존 감상 이력의 `mb_album` 메타와 후보 메타를 비교해 artist / genre / era 기반으로 재순위한다.
+- 메타 조회에 실패해도 추천 요청 자체는 실패시키지 않고 기존 벡터 순서로 fallback한다.
 
 **Response `202 Accepted`**
 
@@ -311,13 +325,19 @@ Content-Type: application/json
   "recommendations": [
     {
       "albumId": "00000000-0000-0000-0000-000000000101",
+      "albumArtist": "Miles Davis",
+      "albumTitle": "Kind of Blue",
       "recommendationScore": 0.9423,
-      "recommendationReason": "모달 재즈 특유의 정적인 분위기가 유사합니다."
+      "recommendationReason": "모달 재즈 특유의 정적인 분위기가 유사합니다.",
+      "criticsReviewId": "00000000-0000-0000-0000-000000001001"
     },
     {
       "albumId": "00000000-0000-0000-0000-000000000205",
+      "albumArtist": "Bill Evans",
+      "albumTitle": "Waltz for Debby",
       "recommendationScore": 0.8812,
-      "recommendationReason": "느린 템포와 서정적인 피아노 라인이 공통적입니다."
+      "recommendationReason": "느린 템포와 서정적인 피아노 라인이 공통적입니다.",
+      "criticsReviewId": "00000000-0000-0000-0000-000000001002"
     }
   ]
 }
@@ -327,9 +347,12 @@ Content-Type: application/json
 |------|------|------|
 | status | Y | `COMPLETED` 또는 `FAILED` |
 | recommendations | Y | `COMPLETED`일 때 TOP K 추천 목록, `FAILED`일 때 빈 배열 |
-| recommendations[].albumId | COMPLETED일 때 Y | `v_embedding_with_album.album_id` (= `embedding_vectors.id` UUID 문자열) |
+| recommendations[].albumId | COMPLETED일 때 Y | `album_reference.id` UUID 문자열 |
+| recommendations[].albumArtist | COMPLETED일 때 Y | 추천 앨범 아티스트명 |
+| recommendations[].albumTitle | COMPLETED일 때 Y | 추천 앨범 제목 |
 | recommendations[].recommendationScore | COMPLETED일 때 Y | 추천 점수 (precision=5, scale=4) |
 | recommendations[].recommendationReason | COMPLETED일 때 Y | 추천 사유 |
+| recommendations[].criticsReviewId | COMPLETED일 때 Y | 연결된 평론가 리뷰 ID |
 | errorCode | FAILED일 때 Y | 실패 원인 코드 |
 | message | FAILED일 때 Y | 실패 설명 |
 

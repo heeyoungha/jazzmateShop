@@ -18,6 +18,7 @@ note over FA
   임베딩 생성
   취향 벡터 합산
   유사도 검색
+  MusicBrainz 메타 재순위
   추천 사유 생성
 end note
 FA -> SP : POST /api/user-reviews/{id}/recommendations\n{status: "COMPLETED", recommendations[]}

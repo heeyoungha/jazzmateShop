@@ -257,7 +257,7 @@ class FakeEmbeddingService:
 
 ### Rationale
 
-- 이 서비스의 외부 의존성은 `EmbeddingService`, `AlbumEmbeddingRepository`, `RecommendationReasonService`, `SpringCallbackClient`, `ReviewedAlbumEmbeddingRepository`, `TasteVectorService` 총 6개로 고정되어 있다. Fake 클래스 수가 많지 않아 유지 비용이 낮다.
+- 이 서비스의 외부 의존성은 `EmbeddingService`, `AlbumEmbeddingRepository`, `RecommendationReasonService`, `SpringCallbackClient`, `UserListenedAlbumRepository`, `TasteVectorService` 총 6개로 고정되어 있다. Fake 클래스 수가 많지 않아 유지 비용이 낮다.
 - `MagicMock`은 존재하지 않는 메서드도 호출을 허용한다. Fake는 정의한 메서드만 호출할 수 있어 인터페이스 계약을 더 엄격하게 검증한다.
 - 여러 파일에서 Fake가 중복되면 `tests/fakes.py`로 분리한다 (Decision 5 참고).
 - `monkeypatch`와 `pytest-mock`은 환경변수, 시간, 랜덤값처럼 Fake로 표현하기 어려운 경계에 제한적으로 사용한다.

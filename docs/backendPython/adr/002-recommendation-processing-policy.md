@@ -88,7 +88,7 @@ response = self.database.rpc(
 ).execute()
 ```
 
-`match_albums`는 `v_embedding_with_album` 뷰를 기반으로 pgvector 코사인 유사도 계산, 정렬, LIMIT을 DB 함수 안에서 처리한다 (`backendJava/migrations/004_fix_recommend_album_table.sql` 참조).
+`match_albums`는 `album_reference.embedding`을 기반으로 pgvector 코사인 유사도 계산, 정렬, LIMIT을 DB 함수 안에서 처리한다 (`backendJava/migrations/007_rebuild_album_reference_with_embedding.sql` 참조).
 
 FastAPI는 `match_albums`라는 계약만 소비하고, 내부적으로 어떤 뷰/테이블을 조인하는지는 DB 함수 계층에 숨긴다.
 
@@ -96,7 +96,7 @@ FastAPI는 `match_albums`라는 계약만 소비하고, 내부적으로 어떤 �
 
 | 컬럼 | 설명 |
 |---|---|
-| `album_id` | Spring 콜백의 `albumId` (UUID) |
+| `album_id` | Spring 콜백의 `albumId` (`album_reference.id` UUID) |
 | `album_artist` | 추천 사유 생성 컨텍스트 |
 | `album_title` | 추천 사유 생성 컨텍스트 |
 | `critics_review_id` | 평론가 리뷰 연결 ID |
@@ -106,7 +106,7 @@ FastAPI는 `match_albums`라는 계약만 소비하고, 내부적으로 어떤 �
 
 ### Rationale
 
-`v_embedding_with_album`을 FastAPI에서 `from_().select().order().limit()` 체인으로 직접 조회하면 pgvector의 `<=>` 코사인 거리 연산자를 Python 레이어에서 표현할 수 없다. 유사도 계산, 정렬, LIMIT은 반드시 DB 안에서 실행되어야 한다.
+`album_reference.embedding`을 FastAPI에서 `from_().select().order().limit()` 체인으로 직접 조회하면 pgvector의 `<=>` 코사인 거리 연산자를 Python 레이어에서 표현할 수 없다. 유사도 계산, 정렬, LIMIT은 반드시 DB 안에서 실행되어야 한다.
 
 `match_albums` DB 함수로 캡슐화하면:
 
@@ -118,8 +118,51 @@ FastAPI는 `match_albums`라는 계약만 소비하고, 내부적으로 어떤 �
 
 | 옵션 | 채택 여부 | 이유 |
 |---|---|---|
-| `from_("v_embedding_with_album").select(...).order(...).limit(...)` | 기각 | pgvector `<=>` 연산자를 Supabase Python 클라이언트 체인으로 표현할 수 없다. 유사도 계산 자체가 불가능하다. |
+| `from_("album_reference").select(...).order(...).limit(...)` | 기각 | pgvector `<=>` 연산자를 Supabase Python 클라이언트 체인으로 표현할 수 없다. 유사도 계산 자체가 불가능하다. |
 | `match_albums` RPC 호출 | 채택 | DB 함수 안에서 pgvector 연산, 정렬, LIMIT을 처리한다. FastAPI는 함수 이름과 인자 계약만 안다. |
+
+---
+
+## Decision 3-1: MusicBrainz 메타 재순위는 후보 검색 이후 적용한다
+
+FastAPI는 `match_albums`에서 최종 추천 수보다 넉넉한 후보 pool을 조회한 뒤, 사용자 기존 감상 이력의 MusicBrainz 메타와 후보 메타를 비교해 최종 `RECOMMENDATION_TOP_K`를 정한다.
+
+후보 pool 크기:
+
+```python
+candidate_pool_size = max(RECOMMENDATION_TOP_K, 50)
+```
+
+점수식:
+
+```text
+final_score = vector_score * 0.80 + meta_score * 0.20
+
+meta_score =
+  artist_score * 0.25
++ genre_score  * 0.55
++ era_score    * 0.20
+```
+
+메타 기준:
+
+| 기준 | 설명 |
+|---|---|
+| artist | 사용자 기존 감상 아티스트와 후보 아티스트 일치 여부 |
+| genres | `mb_album.genres` 교집합 기반 점수 |
+| era | 사용자 감상 연도 중앙값과 후보 `first_release_year` 차이 |
+
+메타 조회 실패는 추천 실패로 처리하지 않는다. 이 경우 기존 벡터 검색 순서로 fallback한다.
+
+### Rationale
+
+사용자가 선택하는 `mb_album`은 MusicBrainz release group 기반이고, 추천 후보 embedding은 AllAboutJazz 기반 `album_reference`에만 존재한다. 따라서 사용자의 기존 감상 앨범이 `album_reference.embedding`으로 항상 연결되지는 않는다.
+
+메타 재순위를 후보 검색 이후에 적용하면:
+
+- embedding이 없는 기존 감상 이력도 artist / genre / era 신호로 추천에 반영할 수 있다.
+- pgvector 검색을 대체하지 않으므로 감상문 의미 유사도 중심의 추천 품질을 유지한다.
+- 메타 품질이 부족한 후보는 기존 vector score만 사용해 안전하게 fallback할 수 있다.
 
 ---
 
@@ -228,7 +271,7 @@ FastAPI는 실패 시 DB 상태를 직접 변경하지 않는다.
 | 유사도 검색 실패 | `status=FAILED` 콜백 전송 |
 | 추천 후보 0건 | 실패로 간주, `status=FAILED` 콜백 전송 |
 | 추천 사유 생성 실패 | fallback 사유로 콜백 진행 |
-| Spring 콜백 전송 실패 | 별도 결정 전까지 로그만 기록, 자동 재시도 없음 |
+| Spring 콜백 전송 실패 | 로그만 기록하고 예외를 전파하지 않음, 자동 재시도 없음 |
 
 Spring의 `FAILED` 전이 정책과 retry API가 최종 사용자 흐름을 관리한다.
 

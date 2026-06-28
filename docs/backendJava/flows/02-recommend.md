@@ -118,9 +118,9 @@
 
 API/DTO/Entity 상세는 [API_SPEC.md](../../API_SPEC.md), [MODEL_SPEC.md](../MODEL_SPEC.md)를 따른다.
 
-## FastAPI 추천 요청 변경사항
+## FastAPI 추천 요청 계약
 
-`AiRecommendationClient`가 FastAPI에 보내는 요청 바디에 `user_id` 필드를 추가해야 한다.
+`AiRecommendationClient`는 FastAPI에 추천 요청을 보낼 때 `user_id` 필드를 포함한다.
 
 ```java
 // before
