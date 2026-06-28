@@ -25,20 +25,36 @@ class RecommendationCallbackItem(BaseModel):
     model_config = ConfigDict(populate_by_name=True, use_enum_values=False)
 
     album_id: str = Field(alias="albumId")
-    album_artist: Optional[str] = Field(default=None, alias="albumArtist")
-    album_title: Optional[str] = Field(default=None, alias="albumTitle")
+    album_artist: str | None = Field(default=None, alias="albumArtist")
+    album_title: str | None = Field(default=None, alias="albumTitle")
     recommendation_score: Decimal = Field(alias="recommendationScore")
     recommendation_reason: str = Field(alias="recommendationReason")
     critics_review_id: str = Field(alias="criticsReviewId")
 
 
+# Spring Boot 콜백의 성공/실패 전체 JSON payload를 만들 때 사용한다.
 class RecommendationCallbackRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True, use_enum_values=False)
 
     status: Literal["COMPLETED", "FAILED"]
-    recommendations: List[RecommendationCallbackItem]
-    error_code: Optional[RecommendationErrorCode] = Field(default=None, alias="errorCode")
-    message: Optional[str] = None
+    recommendations: list[RecommendationCallbackItem]
+    error_code: RecommendationErrorCode | None = Field(
+        default=None, alias="errorCode"
+    )
+    message: str | None = None
+
+    @model_validator(mode="after")
+    def validate_status_payload(self) -> "RecommendationCallbackRequest":
+        if self.status == "COMPLETED":
+            if self.error_code is not None or self.message is not None:
+                raise ValueError("completed callback must not include error details.")
+            return self
+
+        if self.error_code is None or not self.message:
+            raise ValueError("failed callback requires error_code and message.")
+        if self.recommendations:
+            raise ValueError("failed callback must not include recommendations.")
+        return self
 
     @classmethod
     def completed(
@@ -58,29 +74,30 @@ class RecommendationCallbackRequest(BaseModel):
         )
 
 
-@dataclass
-class AlbumCandidate:
-    album_id: str
+# DB 유사도 검색 결과 row를 서비스 내부 추천 후보로 넘길 때 사용한다.
+class AlbumCandidate(BaseModel):
+    album_id: NonBlankStr
     similarity: float
     album_title: str = ""
     artist_name: str = ""
     review_summary: str = ""
     review_content: str = ""
-    critics_review_id: str = ""
+    critics_review_id: NonBlankStr
 
     @classmethod
     def from_row(cls, row: dict[str, Any]) -> "AlbumCandidate":
         return cls(
-            album_id=str(row.get("album_id", "")),
+            album_id=row.get("album_id"),
             similarity=float(row.get("similarity", 0)),
             album_title=str(row.get("album_title", "")),
             artist_name=str(row.get("artist_name") or row.get("album_artist", "")),
             review_summary=str(row.get("review_summary", "")),
             review_content=str(row.get("review_content", "")),
-            critics_review_id=str(row.get("critics_review_id", "")),
+            critics_review_id=row.get("critics_review_id"),
         )
 
 
+# LLM이 생성한 앨범별 추천 사유를 후보 앨범과 매칭할 때 사용한다.
 @dataclass
 class RecommendationReason:
     album_id: str

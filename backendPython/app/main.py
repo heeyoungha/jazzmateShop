@@ -30,11 +30,12 @@ def create_database_client():
 
 
 def create_openai_embedding_client() -> AsyncOpenAI:
-    return AsyncOpenAI()
+    return AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
 
 
 def create_openai_chat_client() -> AsyncOpenAI:
     return AsyncOpenAI(
+        api_key=settings.OPENAI_API_KEY,
         timeout=settings.OPENAI_TIMEOUT_SECONDS,
         max_retries=settings.OPENAI_MAX_RETRIES,
     )

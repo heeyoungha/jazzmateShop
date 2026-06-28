@@ -25,10 +25,10 @@ class AlbumEmbeddingRepository:
             ).execute()
             
             rows = list(response.data or [])
+
+            sorted_rows = sorted(
+                rows, key=lambda row: float(row.get("similarity", 0)), reverse=True
+            )
+            return [AlbumCandidate.from_row(row) for row in sorted_rows[:top_k]]
         except Exception as exc:
             raise RepositoryError(str(exc)) from exc
-
-        sorted_rows = sorted(
-            rows, key=lambda row: float(row.get("similarity", 0)), reverse=True
-        )
-        return [AlbumCandidate.from_row(row) for row in sorted_rows[:top_k]]
