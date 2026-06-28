@@ -32,10 +32,10 @@ public class RecommendAlbum {
     @Column(name = "critics_review_id", nullable = false)
     private UUID criticsReviewId;
 
-    @Column(name = "album_artist")
+    @Column(name = "album_artist", nullable = false)
     private String albumArtist;
 
-    @Column(name = "album_title")
+    @Column(name = "album_title", nullable = false)
     private String albumTitle;
 
     @Column(name = "recommendation_score", precision = 5, scale = 4, nullable = false)

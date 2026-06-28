@@ -1,5 +1,6 @@
 package shop.jazzmate.jazzmateshop.recommendation;
 
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 import shop.jazzmate.jazzmateshop.recommendation.dto.RecommendAlbumCallbackRequest;
@@ -14,7 +15,7 @@ public class RecommendAlbumController {
     @PostMapping("/{reviewId}/recommendations")
     public void createRecommendations(
             @PathVariable Integer reviewId,
-            @RequestBody RecommendAlbumCallbackRequest request) {
+            @Valid @RequestBody RecommendAlbumCallbackRequest request) {
         recommendAlbumService.createRecommendAlbums(reviewId, request);
     }
 }

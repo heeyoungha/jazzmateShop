@@ -24,12 +24,12 @@ class RecommendByReviewRequest(BaseModel):
 class RecommendationCallbackItem(BaseModel):
     model_config = ConfigDict(populate_by_name=True, use_enum_values=False)
 
-    album_id: str = Field(alias="albumId")
-    album_artist: str | None = Field(default=None, alias="albumArtist")
-    album_title: str | None = Field(default=None, alias="albumTitle")
+    album_id: NonBlankStr = Field(alias="albumId")
+    album_artist: NonBlankStr = Field(alias="albumArtist")
+    album_title: NonBlankStr = Field(alias="albumTitle")
     recommendation_score: Decimal = Field(alias="recommendationScore")
-    recommendation_reason: str = Field(alias="recommendationReason")
-    critics_review_id: str = Field(alias="criticsReviewId")
+    recommendation_reason: NonBlankStr = Field(alias="recommendationReason")
+    critics_review_id: NonBlankStr = Field(alias="criticsReviewId")
 
 
 # Spring Boot 콜백의 성공/실패 전체 JSON payload를 만들 때 사용한다.
