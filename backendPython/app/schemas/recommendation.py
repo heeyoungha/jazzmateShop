@@ -104,6 +104,14 @@ class RecommendationReason:
     recommendation_reason: str
 
 
+@dataclass(frozen=True)
+class AlbumMetadata:
+    album_id: str
+    artist_name: str | None
+    genres: tuple[str, ...]
+    first_release_year: int | None
+
+
 def normalize_score(value: float) -> Decimal:
     bounded = min(max(float(value), 0.0), 1.0)
     return Decimal(str(bounded)).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
