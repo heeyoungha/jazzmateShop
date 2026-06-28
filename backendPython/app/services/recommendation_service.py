@@ -7,6 +7,7 @@ from app.core.config import settings
 from app.core.error_codes import RecommendationErrorCode
 from app.core.exceptions import ConfigurationError, EmbeddingError, RepositoryError
 from app.repositories.album_embedding_repository import AlbumEmbeddingRepository
+from app.repositories.user_listened_album_repository import UserListenedAlbumRepository
 from app.schemas.recommendation import (
     RecommendationCallbackItem,
     RecommendationReason,
@@ -14,6 +15,7 @@ from app.schemas.recommendation import (
 )
 from app.services.embedding_service import EmbeddingService
 from app.services.recommendation_reason_service import RecommendationReasonService
+from app.services.taste_vector_service import TasteVectorService
 
 
 logger = logging.getLogger(__name__)
@@ -26,6 +28,8 @@ class RecommendationService:
         album_embedding_repository: AlbumEmbeddingRepository,
         recommendation_reason_service: RecommendationReasonService,
         spring_callback_client: SpringCallbackClient,
+        user_listened_album_repository: UserListenedAlbumRepository,
+        taste_vector_service: TasteVectorService,
         top_k: int = settings.RECOMMENDATION_TOP_K,
     ):
         if embedding_service is None:
@@ -48,9 +52,21 @@ class RecommendationService:
                 "RecommendationService requires a SpringCallbackClient."
             )
         self.spring_callback_client = spring_callback_client
+        if user_listened_album_repository is None:
+            raise ConfigurationError(
+                "RecommendationService requires a UserListenedAlbumRepository."
+            )
+        self.user_listened_album_repository = user_listened_album_repository
+        if taste_vector_service is None:
+            raise ConfigurationError(
+                "RecommendationService requires a TasteVectorService."
+            )
+        self.taste_vector_service = taste_vector_service
         self.top_k = top_k
 
-    async def recommend_by_review(self, review_id: int, review_content: str) -> None:
+    async def recommend_by_review(self, review_id: int, review_content: str, user_id: str) -> None:
+        
+        # 감상문을 검색용 벡터로 변환한다
         try:
             embedding = await self.embedding_service.embed_review(review_content)
         except EmbeddingError:
@@ -60,10 +76,23 @@ class RecommendationService:
                 "감상문 임베딩 생성에 실패했습니다.",
             )
             return
+        
+        # 이전 감상 앨범의 임베딩을 조회한다
+        reviewed_album_embeddings = self.user_listened_album_repository.find_by_user_id(
+            user_id
+        )
 
+        # 감상 이력이 있으면 감상문 벡터와 취향 벡터를 블렌딩한다
+        query_vector = embedding
+        if reviewed_album_embeddings:
+            query_vector = self.taste_vector_service.build_query_vector(
+                embedding, reviewed_album_embeddings
+            )
+
+        # 검색 벡터로 유사 앨범 후보를 조회한다
         try:
             candidates = await self.album_embedding_repository.find_similar_albums(
-                embedding, self.top_k
+                query_vector, self.top_k
             )
         except RepositoryError:
             await self._send_failed_safely(
@@ -81,18 +110,19 @@ class RecommendationService:
             )
             return
 
+        # 후보 앨범별 추천 사유를 생성한다
         reasons = await self.recommendation_reason_service.generate_reasons(
             review_content, candidates
         )
         recommendations = self._build_callback_items(candidates, reasons)
 
+        # 완료 결과는 Spring Boot 콜백 API로 전달한다
         try:
             await self.spring_callback_client.send_completed_result(
                 review_id, recommendations
             )
         except Exception as exc:
             logger.exception("Spring callback failed: %s", exc)
-            raise
 
     def _build_callback_items(
         self, 
@@ -124,4 +154,3 @@ class RecommendationService:
             )
         except Exception as exc:
             logger.exception("Spring callback failed: %s", exc)
-            raise

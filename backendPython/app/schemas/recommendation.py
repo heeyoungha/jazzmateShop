@@ -1,21 +1,26 @@
 from dataclasses import dataclass
 from decimal import Decimal, ROUND_HALF_UP
-from enum import Enum
-from typing import Annotated, Any, Iterable, List, Literal, Optional
+from typing import Annotated, Any, Iterable, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
 from app.core.error_codes import RecommendationErrorCode
 
 
+NonBlankStr = Annotated[
+    str,
+    StringConstraints(strip_whitespace=True, min_length=1),
+]
+
+
+# FastAPI가 Spring Boot의 추천 요청 본문을 검증할 때 사용한다.
 class RecommendByReviewRequest(BaseModel):
-    review_id: Annotated[int, Field(gt=0)]
-    review_content: Annotated[
-        str,
-        StringConstraints(strip_whitespace=True, min_length=1),
-    ]
+    review_id: int = Field(gt=0)
+    review_content: NonBlankStr
+    user_id: NonBlankStr
 
 
+# Spring Boot 콜백에 담을 추천 앨범 1건의 JSON payload를 만들 때 사용한다.
 class RecommendationCallbackItem(BaseModel):
     model_config = ConfigDict(populate_by_name=True, use_enum_values=False)
 

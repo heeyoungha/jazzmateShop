@@ -18,5 +18,6 @@ async def recommend_by_review(
         service.recommend_by_review,
         request.review_id,
         request.review_content,
+        request.user_id,
     )
     return Response(status_code=status.HTTP_202_ACCEPTED)

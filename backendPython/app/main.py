@@ -1,12 +1,17 @@
+import logging
 from contextlib import asynccontextmanager
 
 import httpx
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from openai import AsyncOpenAI
 
 from app.api.recommend_router import router as recommend_router
 from app.core.config import settings
 from app.core.exceptions import ConfigurationError
+
+log = logging.getLogger(__name__)
 
 
 def create_database_client():
@@ -72,4 +77,13 @@ app = FastAPI(
     title="JazzmateShop AI Recommendation API",
     lifespan=lifespan,
 )
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    log.error("422 Validation error | path=%s | body=%s | errors=%s",
+              request.url.path, exc.body, exc.errors())
+    return JSONResponse(status_code=422, content={"detail": exc.errors()})
+
+
 app.include_router(recommend_router)

@@ -3,9 +3,11 @@ from fastapi import Request
 from app.core.exceptions import ConfigurationError
 from app.clients.spring_callback_client import SpringCallbackClient
 from app.repositories.album_embedding_repository import AlbumEmbeddingRepository
+from app.repositories.user_listened_album_repository import UserListenedAlbumRepository
 from app.services.embedding_service import EmbeddingService
 from app.services.recommendation_reason_service import RecommendationReasonService
 from app.services.recommendation_service import RecommendationService
+from app.services.taste_vector_service import TasteVectorService
 
 
 def _get_required_app_state(request: Request, resource_name: str):
@@ -30,4 +32,6 @@ def get_recommendation_service(request: Request) -> RecommendationService:
             openai_client=chat_client
         ),
         spring_callback_client=SpringCallbackClient(http_client=spring_http_client),
+        user_listened_album_repository=UserListenedAlbumRepository(database=database),
+        taste_vector_service=TasteVectorService(),
     )
