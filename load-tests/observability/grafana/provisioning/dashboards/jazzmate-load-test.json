@@ -1,0 +1,193 @@
+{
+  "title": "Jazzmate Load Test",
+  "uid": "jazzmate-load-test",
+  "schemaVersion": 39,
+  "refresh": "10s",
+  "time": { "from": "now-15m", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "title": "JVM Live Threads",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "datasource": "Prometheus",
+          "expr": "jvm_threads_live_threads{job=\"java-backend\"}",
+          "legendFormat": "live threads"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Hikari Pending Connections",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "datasource": "Prometheus",
+          "expr": "hikaricp_connections_pending{job=\"java-backend\"}",
+          "legendFormat": "pending"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Hikari Idle Connections",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 8, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "datasource": "Prometheus",
+          "expr": "hikaricp_connections_idle{job=\"java-backend\"}",
+          "legendFormat": "idle"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Hikari Active Connections",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 8, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "datasource": "Prometheus",
+          "expr": "hikaricp_connections_active{job=\"java-backend\"}",
+          "legendFormat": "active"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Tomcat 생성 Thread",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 16, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "datasource": "Prometheus",
+          "expr": "tomcat_threads_current_threads{job=\"java-backend\"}",
+          "legendFormat": "current threads"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Tomcat Busy Threads",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 16, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "datasource": "Prometheus",
+          "expr": "tomcat_threads_busy_threads{job=\"java-backend\"}",
+          "legendFormat": "busy threads"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Process CPU Usage",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 24, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "datasource": "Prometheus",
+          "expr": "process_cpu_usage{job=\"java-backend\"}",
+          "legendFormat": "cpu usage"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "title": "HTTP Request Rate (by uri)",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 24, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "datasource": "Prometheus",
+          "expr": "rate(http_server_requests_seconds_count{job=\"java-backend\"}[1m])",
+          "legendFormat": "{{uri}} {{status}}"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "title": "Completion Coverage (완료 / 제출)",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 32, "w": 12, "h": 8 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 0.5 },
+              { "color": "green", "value": 0.9 }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "datasource": "Prometheus",
+          "expr": "k6_completed_reviews_total / k6_submitted_reviews_total",
+          "legendFormat": "coverage"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "title": "PENDING 누적 응답 수",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 32, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "datasource": "Prometheus",
+          "expr": "k6_pending_responses_total or vector(0)",
+          "legendFormat": "pending responses"
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "title": "제출 / 완료 / 실패 누적",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 40, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "datasource": "Prometheus",
+          "expr": "k6_submitted_reviews_total",
+          "legendFormat": "submitted"
+        },
+        {
+          "datasource": "Prometheus",
+          "expr": "k6_completed_reviews_total",
+          "legendFormat": "completed"
+        },
+        {
+          "datasource": "Prometheus",
+          "expr": "k6_timed_out_reviews_total",
+          "legendFormat": "timed_out"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "title": "E2E time_to_completed p95 (ms)",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 40, "w": 12, "h": 8 },
+      "fieldConfig": {
+        "defaults": { "unit": "s" }
+      },
+      "targets": [
+        {
+          "datasource": "Prometheus",
+          "expr": "k6_time_to_completed_p99",
+          "legendFormat": "time_to_completed p99"
+        }
+      ]
+    }
+  ]
+}

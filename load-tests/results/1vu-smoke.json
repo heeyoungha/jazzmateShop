@@ -1,0 +1,246 @@
+{
+    "metrics": {
+        "submitted_reviews": {
+            "count": 4,
+            "rate": 0.26575685692554396
+        },
+        "polling_get_duration": {
+            "p(95)": 5.5326,
+            "avg": 4.684399999999999,
+            "min": 3.836,
+            "med": 4.408,
+            "max": 5.585,
+            "p(90)": 5.4802,
+            "thresholds": {
+                "p(95)<500": false
+            }
+        },
+        "http_req_tls_handshaking": {
+            "p(90)": 0,
+            "p(95)": 0,
+            "avg": 0,
+            "min": 0,
+            "med": 0,
+            "max": 0
+        },
+        "http_reqs": {
+            "rate": 0.5979529280824739,
+            "count": 9
+        },
+        "http_req_waiting": {
+            "med": 4.169,
+            "max": 6.386,
+            "p(90)": 5.5756000000000006,
+            "p(95)": 5.9807999999999995,
+            "avg": 4.295999999999999,
+            "min": 2.864
+        },
+        "checks": {
+            "passes": 18,
+            "fails": 0,
+            "value": 1
+        },
+        "polling_get_failed": {
+            "passes": 0,
+            "fails": 5,
+            "thresholds": {
+                "rate<0.01": false
+            },
+            "value": 0
+        },
+        "e2e_timeout_rate": {
+            "fails": 4,
+            "passes": 0,
+            "value": 0
+        },
+        "pending_responses": {
+            "count": 1,
+            "rate": 0.06643921423138599
+        },
+        "http_req_duration": {
+            "max": 6.737,
+            "p(90)": 5.8154,
+            "p(95)": 6.276199999999999,
+            "avg": 4.4446666666666665,
+            "min": 2.957,
+            "med": 4.27
+        },
+        "submit_api_failed": {
+            "passes": 0,
+            "fails": 4,
+            "thresholds": {
+                "rate<0.01": false
+            },
+            "value": 0
+        },
+        "polling_count_per_review": {
+            "avg": 1.25,
+            "min": 1,
+            "med": 1,
+            "max": 2,
+            "p(90)": 1.7000000000000002,
+            "p(95)": 1.8499999999999996
+        },
+        "http_req_sending": {
+            "max": 0.166,
+            "p(90)": 0.09480000000000002,
+            "p(95)": 0.13039999999999996,
+            "avg": 0.049111111111111126,
+            "min": 0.022,
+            "med": 0.03
+        },
+        "vus_max": {
+            "value": 1,
+            "min": 1,
+            "max": 1
+        },
+        "http_req_receiving": {
+            "p(90)": 0.181,
+            "p(95)": 0.183,
+            "avg": 0.09955555555555554,
+            "min": 0.067,
+            "med": 0.078,
+            "max": 0.185
+        },
+        "http_req_failed": {
+            "fails": 9,
+            "passes": 0,
+            "thresholds": {
+                "rate<0.05": false
+            },
+            "value": 0
+        },
+        "recommendation_failed_rate": {
+            "passes": 0,
+            "fails": 4,
+            "value": 0
+        },
+        "http_req_connecting": {
+            "avg": 0.022444444444444447,
+            "min": 0,
+            "med": 0,
+            "max": 0.202,
+            "p(90)": 0.04040000000000004,
+            "p(95)": 0.12119999999999993
+        },
+        "http_req_duration{expected_response:true}": {
+            "med": 4.27,
+            "max": 6.737,
+            "p(90)": 5.8154,
+            "p(95)": 6.276199999999999,
+            "avg": 4.4446666666666665,
+            "min": 2.957
+        },
+        "time_to_completed": {
+            "p(95)": 5571.049999999999,
+            "avg": 3762.5,
+            "min": 3008,
+            "med": 3009.5,
+            "max": 6023,
+            "p(90)": 5119.1,
+            "thresholds": {
+                "p(95)<180000": false
+            }
+        },
+        "data_sent": {
+            "count": 2738,
+            "rate": 181.91056856553485
+        },
+        "http_req_blocked": {
+            "avg": 0.10677777777777779,
+            "min": 0.003,
+            "med": 0.007,
+            "max": 0.911,
+            "p(90)": 0.18940000000000018,
+            "p(95)": 0.5501999999999997
+        },
+        "completed_reviews": {
+            "rate": 0.26575685692554396,
+            "count": 4
+        },
+        "completion_success_rate": {
+            "passes": 4,
+            "fails": 0,
+            "thresholds": {
+                "rate>0.95": false
+            },
+            "value": 1
+        },
+        "e2e_failed_rate": {
+            "passes": 0,
+            "fails": 4,
+            "thresholds": {
+                "rate<0.05": false
+            },
+            "value": 0
+        },
+        "vus": {
+            "max": 1,
+            "value": 1,
+            "min": 1
+        },
+        "iteration_duration": {
+            "med": 3009.4897695,
+            "max": 6023.443052,
+            "p(90)": 5119.578633200001,
+            "p(95)": 5571.510842599999,
+            "avg": 3762.53629175,
+            "min": 3007.722576
+        },
+        "submit_api_duration": {
+            "p(95)": 6.275449999999999,
+            "avg": 4.145,
+            "min": 2.957,
+            "med": 3.443,
+            "max": 6.737,
+            "p(90)": 5.8139,
+            "thresholds": {
+                "p(95)<1000": false
+            }
+        },
+        "iterations": {
+            "count": 4,
+            "rate": 0.26575685692554396
+        },
+        "data_received": {
+            "count": 10639,
+            "rate": 706.8468002077155
+        }
+    },
+    "root_group": {
+        "name": "",
+        "path": "",
+        "id": "d41d8cd98f00b204e9800998ecf8427e",
+        "groups": {},
+        "checks": {
+                "submit status 201": {
+                    "name": "submit status 201",
+                    "path": "::submit status 201",
+                    "id": "eb4c1d81c0aec807adae7ccd471e4457",
+                    "passes": 4,
+                    "fails": 0
+                },
+                "submit has review id": {
+                    "name": "submit has review id",
+                    "path": "::submit has review id",
+                    "id": "3e6272550f79c0507394fed3d335230c",
+                    "passes": 4,
+                    "fails": 0
+                },
+                "poll status 200": {
+                    "passes": 5,
+                    "fails": 0,
+                    "name": "poll status 200",
+                    "path": "::poll status 200",
+                    "id": "b92afba83a9ab7c219d6b578747532db"
+                },
+                "poll has recommendationStatus": {
+                    "name": "poll has recommendationStatus",
+                    "path": "::poll has recommendationStatus",
+                    "id": "aff8d01e269deb48a43e4ec6d41395af",
+                    "passes": 5,
+                    "fails": 0
+                }
+            }
+    }
+}

@@ -1,7 +1,8 @@
 CREATE TABLE IF NOT EXISTS user_reviews (
     id                      SERIAL PRIMARY KEY,
     user_id                 VARCHAR(255),
-    track_name              VARCHAR(255),
+    mb_album_gid            UUID,
+    album_name              VARCHAR(255),
     artist_name             VARCHAR(255),
     review_content          TEXT NOT NULL,
     rating                  NUMERIC(3, 1),
@@ -43,7 +44,8 @@ CREATE INDEX IF NOT EXISTS idx_recommend_album_user_review_id
     ON recommend_album(user_review_id);
 
 INSERT INTO user_reviews (
-    track_name,
+    user_id,
+    album_name,
     artist_name,
     review_content,
     rating,
@@ -57,7 +59,8 @@ INSERT INTO user_reviews (
     recommendation_status
 )
 SELECT
-    'Polling Load Test Track ' || n,
+    'polling-load-test-user',
+    'Polling Load Test Album ' || n,
     'Jazzmate Load Test',
     'A spacious modal performance with a warm bass line and restrained cymbal texture.',
     4.5,

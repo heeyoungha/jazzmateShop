@@ -33,6 +33,7 @@ const maxSubmitP95Ms = __ENV.MAX_SUBMIT_P95_MS || "1000";
 const maxPollingP95Ms = __ENV.MAX_POLLING_P95_MS || "500";
 const maxTimeToCompletedP95Ms = __ENV.MAX_TIME_TO_COMPLETED_P95_MS || String(maxWaitSeconds * 1000);
 const disableThresholds = (__ENV.DISABLE_THRESHOLDS || "false").toLowerCase() === "true";
+const reviewPoolSize = Number(__ENV.REVIEW_POOL_SIZE || "1000");
 
 const submitDuration = new Trend("submit_api_duration", true);
 const pollingDuration = new Trend("polling_get_duration", true);
@@ -93,21 +94,71 @@ export const options = {
   thresholds,
 };
 
-function buildReviewPayload() {
-  const uniqueId = `${__VU}-${__ITER}-${Date.now()}`;
-
-  return {
-    trackName: `Recommendation E2E Track ${uniqueId}`,
-    artistName: "Jazzmate Load Test",
-    reviewContent:
-      "A spacious modal jazz performance with a warm bass line, restrained cymbal texture, and a calm late-night atmosphere.",
-    rating: 4.5,
+const reviewThemes = [
+  {
     mood: "calm",
     genre: "modal jazz",
     energyLevel: 0.55,
     bpm: 96,
     vocalStyle: "instrumental",
     instrumentation: "piano, bass, drums",
+    text: "A spacious modal jazz performance with a warm bass line, restrained cymbal texture, and a calm late-night atmosphere.",
+  },
+  {
+    mood: "bright",
+    genre: "hard bop",
+    energyLevel: 0.72,
+    bpm: 138,
+    vocalStyle: "instrumental",
+    instrumentation: "trumpet, saxophone, piano, bass, drums",
+    text: "A driving hard bop session with crisp horn lines, walking bass, and a lively club-stage pulse.",
+  },
+  {
+    mood: "melancholy",
+    genre: "vocal jazz",
+    energyLevel: 0.42,
+    bpm: 82,
+    vocalStyle: "warm vocal",
+    instrumentation: "voice, piano, bass, brushed drums",
+    text: "A tender vocal jazz performance with intimate phrasing, soft brushwork, and a reflective after-hours mood.",
+  },
+  {
+    mood: "intense",
+    genre: "post-bop",
+    energyLevel: 0.83,
+    bpm: 152,
+    vocalStyle: "instrumental",
+    instrumentation: "saxophone, piano, bass, drums",
+    text: "An angular post-bop performance with restless saxophone lines, elastic rhythm, and sharp ensemble turns.",
+  },
+  {
+    mood: "dreamy",
+    genre: "fusion",
+    energyLevel: 0.66,
+    bpm: 118,
+    vocalStyle: "instrumental",
+    instrumentation: "electric piano, guitar, bass, drums",
+    text: "A textured fusion track with electric piano shimmer, rounded bass motion, and a floating melodic atmosphere.",
+  },
+];
+
+function buildReviewPayload() {
+  const reviewIndex = ((__ITER * Math.max(__VU, 1)) + (__VU - 1)) % reviewPoolSize;
+  const theme = reviewThemes[reviewIndex % reviewThemes.length];
+  const uniqueId = `${reviewIndex + 1}-${__VU}-${__ITER}`;
+
+  return {
+    albumName: `Mock Review Pool Album ${uniqueId}`,
+    artistName: "Jazzmate Load Test",
+    reviewContent: `${theme.text} Mock review pool item ${reviewIndex + 1}.`,
+    userId: `load-test-user-${(reviewIndex % 100) + 1}`,
+    rating: 4.5,
+    mood: theme.mood,
+    genre: theme.genre,
+    energyLevel: theme.energyLevel,
+    bpm: theme.bpm,
+    vocalStyle: theme.vocalStyle,
+    instrumentation: theme.instrumentation,
     isPublic: false,
   };
 }
@@ -133,6 +184,7 @@ export default function () {
   const submit = http.post(`${baseUrl}/api/user-reviews`, JSON.stringify(buildReviewPayload()), {
     headers: { "Content-Type": "application/json" },
     timeout: requestTimeout,
+    tags: { name: "POST /api/user-reviews" },
   });
 
   submitDuration.add(submit.timings.duration);
@@ -160,6 +212,7 @@ export default function () {
 
     const poll = http.get(`${baseUrl}/api/user-reviews/${reviewId}`, {
       timeout: requestTimeout,
+      tags: { name: "GET /api/user-reviews/{id}" },
     });
 
     pollingDuration.add(poll.timings.duration);
