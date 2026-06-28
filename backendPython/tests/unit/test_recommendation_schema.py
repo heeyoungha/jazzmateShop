@@ -45,6 +45,8 @@ def test_callback_item_serializes_camel_case():
     # given / when
     item = RecommendationCallbackItem(
         album_id=ALBUM_ID_1,
+        album_artist="Miles Davis",
+        album_title="Kind of Blue",
         recommendation_score=Decimal("0.9423"),
         recommendation_reason="감상문과 앨범 모두 차분한 모달 재즈의 분위기를 공유합니다.",
         critics_review_id=CRITICS_REVIEW_ID_1,
@@ -53,8 +55,8 @@ def test_callback_item_serializes_camel_case():
     # then
     assert dump_alias(item) == {
         "albumId": ALBUM_ID_1,
-        "albumArtist": None,
-        "albumTitle": None,
+        "albumArtist": "Miles Davis",
+        "albumTitle": "Kind of Blue",
         "recommendationScore": Decimal("0.9423"),
         "recommendationReason": "감상문과 앨범 모두 차분한 모달 재즈의 분위기를 공유합니다.",
         "criticsReviewId": CRITICS_REVIEW_ID_1,
@@ -67,6 +69,8 @@ def test_callback_request_completed_contains_recommendations():
     # given
     item = RecommendationCallbackItem(
         album_id=ALBUM_ID_1,
+        album_artist="Miles Davis",
+        album_title="Kind of Blue",
         recommendation_score=Decimal("0.9423"),
         recommendation_reason="감상문과 앨범 모두 차분한 모달 재즈의 분위기를 공유합니다.",
         critics_review_id=CRITICS_REVIEW_ID_1,
@@ -106,6 +110,8 @@ def test_callback_request_completed_rejects_error_details():
     # given
     item = RecommendationCallbackItem(
         album_id=ALBUM_ID_1,
+        album_artist="Miles Davis",
+        album_title="Kind of Blue",
         recommendation_score=Decimal("0.9423"),
         recommendation_reason="감상문과 앨범 모두 차분한 모달 재즈의 분위기를 공유합니다.",
         critics_review_id=CRITICS_REVIEW_ID_1,
@@ -132,6 +138,8 @@ def test_callback_request_failed_rejects_recommendations():
     # given
     item = RecommendationCallbackItem(
         album_id=ALBUM_ID_1,
+        album_artist="Miles Davis",
+        album_title="Kind of Blue",
         recommendation_score=Decimal("0.9423"),
         recommendation_reason="감상문과 앨범 모두 차분한 모달 재즈의 분위기를 공유합니다.",
         critics_review_id=CRITICS_REVIEW_ID_1,
@@ -145,6 +153,31 @@ def test_callback_request_failed_rejects_recommendations():
             error_code=RecommendationErrorCode.NO_CANDIDATES,
             message="추천 후보가 없습니다.",
         )
+
+
+@pytest.mark.parametrize(
+    "field_name, value",
+    [
+        ("album_artist", ""),
+        ("album_title", " "),
+        ("recommendation_reason", ""),
+        ("critics_review_id", ""),
+    ],
+)
+def test_callback_item_requires_completed_display_fields(field_name, value):
+    """완료 콜백 항목은 화면 표시와 평론가 리뷰 연결에 필요한 필드를 반드시 포함한다."""
+    values = {
+        "album_id": ALBUM_ID_1,
+        "album_artist": "Miles Davis",
+        "album_title": "Kind of Blue",
+        "recommendation_score": Decimal("0.9423"),
+        "recommendation_reason": "감상문과 앨범 모두 차분한 모달 재즈의 분위기를 공유합니다.",
+        "critics_review_id": CRITICS_REVIEW_ID_1,
+    }
+    values[field_name] = value
+
+    with pytest.raises(ValueError, match=field_name):
+        RecommendationCallbackItem(**values)
 
 
 def test_album_candidate_from_row_requires_album_id():

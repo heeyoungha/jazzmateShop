@@ -15,6 +15,8 @@ from tests.fixtures import ALBUM_ID_1, CRITICS_REVIEW_ID_1, REVIEW_ID
 def make_item():
     return RecommendationCallbackItem(
         album_id=ALBUM_ID_1,
+        album_artist="Miles Davis",
+        album_title="Kind of Blue",
         recommendation_score=Decimal("0.9423"),
         recommendation_reason="차분한 모달 재즈 분위기가 잘 맞습니다.",
         critics_review_id=CRITICS_REVIEW_ID_1,
@@ -59,6 +61,8 @@ async def test_send_completed_result_posts_expected_payload():
     payload = json.loads(request.content)
     assert payload["status"] == "COMPLETED"
     assert payload["recommendations"][0]["albumId"] == ALBUM_ID_1
+    assert payload["recommendations"][0]["albumArtist"] == "Miles Davis"
+    assert payload["recommendations"][0]["albumTitle"] == "Kind of Blue"
     assert payload["recommendations"][0]["recommendationScore"] == "0.9423"
     assert payload["recommendations"][0]["recommendationReason"]
     assert payload["recommendations"][0]["criticsReviewId"] == CRITICS_REVIEW_ID_1
