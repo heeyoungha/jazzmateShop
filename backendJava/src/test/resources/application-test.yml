@@ -1,31 +1,28 @@
 # src/test/resources/application-test.yml
-# 통합 테스트(@SpringBootTest) 전용 설정
+# 테스트 전용 설정
 
 spring:
   datasource:
-    url: jdbc:h2:mem:jazzmate_test;DB_CLOSE_DELAY=-1;MODE=PostgreSQL
-    driver-class-name: org.h2.Driver
-    username: sa
-    password:
+    url: ${SPRING_TEST_DATASOURCE_URL:jdbc:postgresql://localhost:55432/jazzmate_test}
+    username: ${SPRING_TEST_DATASOURCE_USERNAME:jazzmate}
+    password: ${SPRING_TEST_DATASOURCE_PASSWORD:jazzmate}
+    driver-class-name: org.postgresql.Driver
 
   jpa:
     hibernate:
       ddl-auto: create-drop
-    database-platform: org.hibernate.dialect.H2Dialect
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
     show-sql: false
     properties:
       hibernate:
         format_sql: false
 
-  # ElementCollection (user_review_tags) H2 호환
-  h2:
-    console:
-      enabled: false
+  test:
+    database:
+      replace: none
 
-# AI 서비스 URL — 통합 테스트에서는 MockBean으로 교체
-ai:
-  service:
-    url: http://localhost:9999  # 실제 연결 안 됨 (MockBean 사용)
+fastapi:
+  base-url: http://localhost:9999
 
 logging:
   level:

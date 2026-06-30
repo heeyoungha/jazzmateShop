@@ -144,6 +144,7 @@ class RecommendAlbumServiceTest {
                 RecommendationStatus.COMPLETED,
                 items,
                 null,
+                null,
                 null
         );
     }
@@ -153,7 +154,8 @@ class RecommendAlbumServiceTest {
                 RecommendationStatus.FAILED,
                 List.of(),
                 FAILURE_ERROR_CODE,
-                FAILURE_MESSAGE
+                FAILURE_MESSAGE,
+                null
         );
     }
 

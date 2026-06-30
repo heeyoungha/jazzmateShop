@@ -25,6 +25,8 @@ public class RecommendAlbumCallbackRequest {
     private List<Item> recommendations;
     private String errorCode;
     private String message;
+    // 감상문 embedding. COMPLETED 시 포함, 저장 실패해도 추천 결과에 영향 없음 (best-effort).
+    private List<Float> reviewEmbedding;
 
     @AssertTrue(message = "COMPLETED callback requires at least one recommendation")
     public boolean isCompletedPayloadValid() {

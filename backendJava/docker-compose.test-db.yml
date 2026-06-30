@@ -1,0 +1,21 @@
+services:
+  test-postgres:
+    image: pgvector/pgvector:pg16
+    container_name: jazzmate-test-postgres
+    environment:
+      POSTGRES_DB: jazzmate_test
+      POSTGRES_USER: jazzmate
+      POSTGRES_PASSWORD: jazzmate
+    ports:
+      - "${TEST_DB_PORT:-55432}:5432"
+    volumes:
+      - test-postgres-data:/var/lib/postgresql/data
+      - ./src/test/resources/db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U jazzmate -d jazzmate_test"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  test-postgres-data:

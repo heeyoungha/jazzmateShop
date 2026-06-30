@@ -1,12 +1,15 @@
 package shop.jazzmate.jazzmateshop.userReview.entity;
 
+import com.pgvector.PGvector;
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.ColumnTransformer;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 
 @Entity
@@ -62,6 +65,12 @@ public class UserReview {
     @Column(name = "is_public")
     private Boolean isPublic;
 
+    // FastAPI 추천 시 생성한 감상문 embedding. 추천 콜백으로 저장. NULL이면 미저장.
+    @Convert(converter = PGvectorConverter.class)
+    @ColumnTransformer(write = "?::vector")
+    @Column(name = "review_embedding", columnDefinition = "vector(1536)")
+    private PGvector reviewEmbedding;
+
     @Builder.Default
     @Enumerated(EnumType.STRING)
     @Column(name = "recommendation_status", length = 20)
@@ -86,6 +95,14 @@ public class UserReview {
     @UpdateTimestamp
     @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt;
+
+    public void saveReviewEmbedding(List<Float> embedding) {
+        float[] array = new float[embedding.size()];
+        for (int i = 0; i < embedding.size(); i++) {
+            array[i] = embedding.get(i);
+        }
+        this.reviewEmbedding = new PGvector(array);
+    }
 
     public void retryRecommendation() {
         this.recommendationStatus = RecommendationStatus.PENDING;

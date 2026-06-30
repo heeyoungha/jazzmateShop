@@ -57,8 +57,14 @@ public class RecommendAlbumService {
                         .build())
                 .toList();
         recommendAlbumRepository.saveAll(albums);
-        
         review.completeRecommendation();
+
+        if (request.getReviewEmbedding() != null) {
+            review.saveReviewEmbedding(request.getReviewEmbedding());
+            log.info("review_embedding 저장 완료: reviewId={}, dimensions={}", reviewId, request.getReviewEmbedding().size());
+        } else {
+            log.warn("review_embedding 없음 (null): reviewId={}", reviewId);
+        }
 
         log.info("추천 앨범 저장 완료: reviewId={}, savedCount={}", reviewId, albums.size());
     }
