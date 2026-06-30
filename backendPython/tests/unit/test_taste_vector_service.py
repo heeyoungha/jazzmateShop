@@ -22,7 +22,7 @@ def test_merges_review_and_user_taste_vectors_with_60_40_weights():
     # when
     result = service.build_query_vector(
         review_embedding=embedding(0.2, 0.4),
-        reviewed_album_embeddings=[
+        personalization_embeddings=[
             embedding(0.6, 0.8),
             embedding(0.4, 0.6),
         ],
@@ -40,7 +40,7 @@ def test_uses_review_embedding_when_user_has_no_matched_albums():
     # when
     result = service.build_query_vector(
         review_embedding=embedding(0.2, 0.4),
-        reviewed_album_embeddings=[],
+        personalization_embeddings=[],
     )
 
     # then
@@ -55,7 +55,7 @@ def test_rejects_invalid_review_embedding_dimensions():
     with pytest.raises(ValueError, match="invalid dimensions"):
         service.build_query_vector(
             review_embedding=[0.2, 0.4],
-            reviewed_album_embeddings=[],
+            personalization_embeddings=[],
         )
 
 
@@ -67,7 +67,7 @@ def test_rejects_invalid_reviewed_album_embedding_dimensions():
     with pytest.raises(ValueError, match="invalid dimensions"):
         service.build_query_vector(
             review_embedding=embedding(0.2, 0.4),
-            reviewed_album_embeddings=[[0.6, 0.8]],
+            personalization_embeddings=[[0.6, 0.8]],
         )
 
 

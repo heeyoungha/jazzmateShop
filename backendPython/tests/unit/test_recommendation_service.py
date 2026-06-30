@@ -69,9 +69,9 @@ class FakeSpringCallbackClient:
         self.failed_calls = []
         self.error = error
 
-    async def send_completed_result(self, review_id, recommendations):
+    async def send_completed_result(self, review_id, recommendations, review_embedding=None):
         self.completed_calls.append(
-            {"review_id": review_id, "recommendations": recommendations}
+            {"review_id": review_id, "recommendations": recommendations, "review_embedding": review_embedding}
         )
         if self.error:
             raise self.error
@@ -102,7 +102,21 @@ class FakeAlbumEmbeddingRepository:
         return self.candidates
 
 
-# 사용자가 이전에 감상한 앨범 임베딩을 DB에서 조회하는 레포지토리를 대체한다 (UserListenedAlbumRepository)
+# 사용자가 이전에 작성한 감상문 임베딩을 DB에서 조회하는 레포지토리를 대체한다
+class FakeUserReviewEmbeddingRepository:
+    def __init__(self, embeddings=None, error=None):
+        self.embeddings = embeddings if embeddings is not None else []
+        self.error = error
+        self.calls = []
+
+    def find_by_user_id(self, user_id):
+        self.calls.append(user_id)
+        if self.error:
+            raise self.error
+        return self.embeddings
+
+
+# 사용자가 이전에 감상한 앨범 임베딩을 DB에서 조회하는 레포지토리를 대체한다
 class FakeUserListenedAlbumRepository:
     def __init__(self, embeddings=None, error=None):
         self.embeddings = embeddings if embeddings is not None else []
@@ -156,10 +170,10 @@ class FakeTasteVectorService:
         self.result_vector = result_vector
         self.calls = []
 
-    def build_query_vector(self, review_embedding, reviewed_album_embeddings):
+    def build_query_vector(self, review_embedding, personalization_embeddings):
         self.calls.append({
             "review_embedding": review_embedding,
-            "reviewed_album_embeddings": reviewed_album_embeddings,
+            "personalization_embeddings": personalization_embeddings,
         })
         return self.result_vector if self.result_vector is not None else review_embedding
 
@@ -190,6 +204,7 @@ def build_service(
     album_embedding_repository=None,
     reason_service=None,
     callback_client=None,
+    user_review_embedding_repository=None,
     user_listened_album_repository=None,
     user_taste_metadata_repository=None,
     album_metadata_repository=None,
@@ -205,6 +220,9 @@ def build_service(
         ),
         recommendation_reason_service=reason_service or FakeRecommendationReasonService(),
         spring_callback_client=callback_client or FakeSpringCallbackClient(),
+        user_review_embedding_repository=(
+            user_review_embedding_repository or FakeUserReviewEmbeddingRepository()
+        ),
         user_listened_album_repository=(
             user_listened_album_repository or FakeUserListenedAlbumRepository()
         ),
@@ -383,10 +401,13 @@ async def test_recommend_by_review_callback_failure_logs_without_retry(caplog):
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_recommend_by_review_blends_review_and_taste_vector_when_user_has_matched_albums():
-    """user_id가 있고 매칭 앨범이 있으면 TasteVectorService로 합산된 벡터로 검색한다."""
+async def test_recommend_by_review_blends_review_and_taste_vector_when_user_has_history_embeddings():
+    """과거 감상문/감상 앨범 embedding이 있으면 TasteVectorService로 합산된 벡터로 검색한다."""
     # given
     album_embedding_repository = FakeAlbumEmbeddingRepository()
+    user_review_embedding_repository = FakeUserReviewEmbeddingRepository(
+        embeddings=[REVIEW_EMBEDDING]
+    )
     user_listened_album_repository = FakeUserListenedAlbumRepository(
         embeddings=[TASTE_VECTOR]
     )
@@ -395,6 +416,7 @@ async def test_recommend_by_review_blends_review_and_taste_vector_when_user_has_
     service = build_service(
         embedding_service=FakeEmbeddingService(vector=REVIEW_EMBEDDING),
         album_embedding_repository=album_embedding_repository,
+        user_review_embedding_repository=user_review_embedding_repository,
         user_listened_album_repository=user_listened_album_repository,
         taste_vector_service=taste_service,
     )
@@ -403,8 +425,13 @@ async def test_recommend_by_review_blends_review_and_taste_vector_when_user_has_
     await service.recommend_by_review(REVIEW_ID, REVIEW_CONTENT, user_id=USER_ID)
 
     # then
+    assert user_review_embedding_repository.calls == [USER_ID]
     assert user_listened_album_repository.calls == [USER_ID]
     assert taste_service.calls[0]["review_embedding"] == REVIEW_EMBEDDING
+    assert taste_service.calls[0]["personalization_embeddings"] == [
+        REVIEW_EMBEDDING,
+        TASTE_VECTOR,
+    ]
     assert album_embedding_repository.calls[0]["embedding"] == TASTE_VECTOR
 
 
@@ -413,12 +440,14 @@ async def test_recommend_by_review_falls_back_to_review_embedding_when_user_has_
     """user_id가 있어도 청취 이력이 없으면 review embedding 100%로 검색한다."""
     # given
     album_embedding_repository = FakeAlbumEmbeddingRepository()
+    user_review_embedding_repository = FakeUserReviewEmbeddingRepository(embeddings=[])
     user_listened_album_repository = FakeUserListenedAlbumRepository(embeddings=[])
     taste_service = FakeTasteVectorService(result_vector=REVIEW_EMBEDDING)
 
     service = build_service(
         embedding_service=FakeEmbeddingService(vector=REVIEW_EMBEDDING),
         album_embedding_repository=album_embedding_repository,
+        user_review_embedding_repository=user_review_embedding_repository,
         user_listened_album_repository=user_listened_album_repository,
         taste_vector_service=taste_service,
     )
@@ -427,6 +456,8 @@ async def test_recommend_by_review_falls_back_to_review_embedding_when_user_has_
     await service.recommend_by_review(REVIEW_ID, REVIEW_CONTENT, user_id=USER_ID)
 
     # then
+    assert user_review_embedding_repository.calls == [USER_ID]
+    assert user_listened_album_repository.calls == [USER_ID]
     assert taste_service.calls == []
     assert album_embedding_repository.calls[0]["embedding"] == REVIEW_EMBEDDING
 
@@ -547,9 +578,39 @@ async def test_recommend_by_review_embedding_history_failure_sends_failed_callba
         embedding_service=FakeEmbeddingService(vector=REVIEW_EMBEDDING),
         album_embedding_repository=album_embedding_repository,
         callback_client=callback_client,
+        user_review_embedding_repository=FakeUserReviewEmbeddingRepository(),
         user_listened_album_repository=FakeUserListenedAlbumRepository(
             error=RepositoryError("history down")
         ),
+        taste_vector_service=taste_service,
+    )
+
+    # when
+    await service.recommend_by_review(REVIEW_ID, REVIEW_CONTENT, user_id=USER_ID)
+
+    # then
+    assert callback_client.completed_calls == []
+    assert callback_client.failed_calls[0]["error_code"] == RecommendationErrorCode.SEARCH_FAILED
+    assert callback_client.failed_calls[0]["message"] == "사용자 감상 이력 조회에 실패했습니다."
+    assert taste_service.calls == []
+    assert album_embedding_repository.calls == []
+
+
+@pytest.mark.asyncio
+async def test_recommend_by_review_review_embedding_history_failure_sends_failed_callback():
+    """사용자 감상문 embedding 조회 실패는 FAILED 콜백으로 처리한다."""
+    # given
+    album_embedding_repository = FakeAlbumEmbeddingRepository()
+    taste_service = FakeTasteVectorService(result_vector=TASTE_VECTOR)
+    callback_client = FakeSpringCallbackClient()
+    service = build_service(
+        embedding_service=FakeEmbeddingService(vector=REVIEW_EMBEDDING),
+        album_embedding_repository=album_embedding_repository,
+        callback_client=callback_client,
+        user_review_embedding_repository=FakeUserReviewEmbeddingRepository(
+            error=RepositoryError("review history down")
+        ),
+        user_listened_album_repository=FakeUserListenedAlbumRepository(),
         taste_vector_service=taste_service,
     )
 

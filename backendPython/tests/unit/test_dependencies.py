@@ -71,6 +71,7 @@ def test_get_recommendation_service_uses_app_state_resources():
     # then
     assert service.album_embedding_repository.database is database
     assert service.album_metadata_repository.database is database
+    assert service.user_review_embedding_repository.database is database
     assert service.user_listened_album_repository.database is database
     assert service.user_taste_metadata_repository.database is database
     assert service.embedding_service.openai_client is embedding_client

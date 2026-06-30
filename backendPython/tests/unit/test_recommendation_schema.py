@@ -102,6 +102,7 @@ def test_callback_request_failed_contains_error_and_empty_recommendations():
         "recommendations": [],
         "errorCode": RecommendationErrorCode.NO_CANDIDATES,
         "message": "추천 후보가 없습니다.",
+        "reviewEmbedding": None,
     }
 
 

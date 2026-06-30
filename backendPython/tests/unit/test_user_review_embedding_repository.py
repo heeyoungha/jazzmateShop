@@ -23,10 +23,6 @@ class FakeQuery:
         self.calls.append(("eq", column, value))
         return self
 
-    def in_(self, column, value):
-        self.calls.append(("in", column, value))
-        return self
-
     @property
     def not_(self):
         self.calls.append(("not",))
@@ -41,71 +37,40 @@ class FakeQuery:
 
 
 class FakeDatabase:
-    def __init__(self, review_rows=None, album_rows=None):
+    def __init__(self, rows=None):
         self.calls = []
-        self.queries = {
-            "user_reviews": FakeQuery(
-                review_rows
-                if review_rows is not None
-                else [
-                    {"mb_album_gid": "mb-1"},
-                    {"mb_album_gid": "mb-1"},
-                    {"mb_album_gid": "mb-2"},
-                ]
-            ),
-            "album_reference": FakeQuery(
-                album_rows
-                if album_rows is not None
-                else [
-                    {"embedding": embedding(0.1)},
-                    {"embedding": embedding(0.3)},
-                ]
-            ),
-        }
+        default_rows = [
+            {"review_embedding": embedding(0.1)},
+            {"review_embedding": embedding(0.3)},
+        ]
+        self.query = FakeQuery(rows if rows is not None else default_rows)
 
     def from_(self, table):
         self.calls.append(("from", table))
-        return self.queries[table]
+        return self.query
 
 
 def repository_class():
     module = importlib.import_module(
-        "app.repositories.user_listened_album_repository"
+        "app.repositories.user_review_embedding_repository"
     )
-    return module.UserListenedAlbumRepository
+    return module.UserReviewEmbeddingRepository
 
 
-def test_find_by_user_id_returns_album_reference_embeddings():
-    """user_id로 감상 앨범을 찾고 연결된 album_reference embedding을 반환한다."""
+def test_find_by_user_id_returns_review_embeddings():
+    """user_id로 저장된 review_embedding 목록을 반환한다."""
     database = FakeDatabase()
     repository = repository_class()(database=database)
 
     result = repository.find_by_user_id("1")
 
     assert result == [embedding(0.1), embedding(0.3)]
-    assert database.calls == [("from", "user_reviews"), ("from", "album_reference")]
-    assert database.queries["album_reference"].calls[1] == (
-        "in",
-        "mb_release_group_id",
-        ["mb-1", "mb-2"],
-    )
-
-
-def test_find_by_user_id_returns_empty_list_when_user_has_no_album_ids():
-    """감상문에 mb_album_gid가 없으면 album_reference를 조회하지 않는다."""
-    database = FakeDatabase(review_rows=[])
-    repository = repository_class()(database=database)
-
-    result = repository.find_by_user_id("1")
-
-    assert result == []
-    assert database.calls == [("from", "user_reviews")]
 
 
 def test_find_by_user_id_parses_string_embeddings():
     """DB가 vector를 문자열로 반환해도 float 리스트로 변환한다."""
-    database = FakeDatabase(album_rows=[
-        {"embedding": str(embedding(0.1))},
+    database = FakeDatabase(rows=[
+        {"review_embedding": str(embedding(0.1))},
     ])
     repository = repository_class()(database=database)
 
@@ -115,19 +80,20 @@ def test_find_by_user_id_parses_string_embeddings():
 
 
 def test_find_by_user_id_returns_empty_list_when_no_embeddings():
-    """연결된 album_reference embedding이 없으면 빈 리스트를 반환한다."""
-    database = FakeDatabase(album_rows=[])
+    """저장된 review_embedding이 없으면 빈 리스트를 반환한다."""
+    database = FakeDatabase(rows=[])
     repository = repository_class()(database=database)
 
     result = repository.find_by_user_id("1")
 
     assert result == []
+    assert database.calls == [("from", "user_reviews")]
 
 
 def test_find_by_user_id_invalid_embedding_raises_repository_error():
     """DB embedding 값이 깨져 있으면 RepositoryError로 변환한다."""
-    database = FakeDatabase(album_rows=[
-        {"embedding": {"invalid": "value"}},
+    database = FakeDatabase(rows=[
+        {"review_embedding": {"invalid": "value"}},
     ])
     repository = repository_class()(database=database)
 
@@ -137,8 +103,8 @@ def test_find_by_user_id_invalid_embedding_raises_repository_error():
 
 def test_find_by_user_id_invalid_embedding_dimensions_raises_repository_error():
     """DB embedding 차원이 설정과 다르면 RepositoryError로 변환한다."""
-    database = FakeDatabase(album_rows=[
-        {"embedding": [0.1, 0.2]},
+    database = FakeDatabase(rows=[
+        {"review_embedding": [0.1, 0.2]},
     ])
     repository = repository_class()(database=database)
 
@@ -146,7 +112,7 @@ def test_find_by_user_id_invalid_embedding_dimensions_raises_repository_error():
         repository.find_by_user_id("1")
 
 
-def test_user_listened_album_repository_requires_database_client():
+def test_user_review_embedding_repository_requires_database_client():
     """DB client 없이 Repository를 생성하면 설정 누락 예외가 발생한다."""
     with pytest.raises(ConfigurationError, match="database client"):
         repository_class()(database=None)
