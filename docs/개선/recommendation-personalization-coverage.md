@@ -1,26 +1,108 @@
-# 추천 개인화 커버리지 개선
+# 감상문 기반 추천과 개인화 보조 신호
 
 ## 한눈에 보기
 
-| | 개선 전 | 개선 후 |
+추천의 기준은 항상 사용자가 현재 작성한 감상문이다.
+
+FastAPI는 감상문 본문을 embedding으로 변환하고, 이 벡터를 중심으로 `album_reference` 후보를 검색한다. 개인화는 추가적으로 '사용자의 이전 감상 이력'과 '선택 앨범 메타데이터'를 보조 신호로 더해 후보 순서를 조정한다.
+
+| 구분 | 역할 | 적용 방식 |
 |---|---|---|
-| 취향 벡터 커버리지 | `album_reference` embedding이 있는 과거 감상만 반영 (실제 12.5%) | embedding이 없는 과거 감상도 `mb_album` 메타로 추가 반영 |
-| 후보 정렬 | vector similarity 순서 그대로 | vector score 80% + 아티스트/장르/연대 meta score 20% |
-| user_id 전달 | FastAPI 요청에 없음 | Spring → FastAPI 요청에 user_id 포함 |
+| 현재 감상문 embedding | 추천의 1순위 기준 | `review_content`를 embedding해 vector search query로 사용 |
+| 과거 감상문 embedding | 의미 기반 취향 보정 | `user_reviews.review_embedding` 평균을 현재 감상문 embedding과 블렌딩 |
+| 감상 앨범 embedding | 연결 가능한 경우의 앨범 취향 보정 | 사용자가 선택한 `mb_album_gid`가 `album_reference`와 연결될 때 과거 감상문 embedding과 함께 블렌딩 |
+| MusicBrainz 메타 | 커버리지 보완용 재순위 | artist / genre / era 기반 meta score로 후보 재순위 |
 
-**핵심 문제:** 사용자가 선택한 MusicBrainz 앨범이 추천 후보 DB(`album_reference`)와 12.5%만 연결되어, 대부분의 경우 개인화 없이 추천이 동작하고 있었다.
-
-**해결 방향:** embedding 연결이 없는 앨범도 MusicBrainz 메타(아티스트, 장르, 연대)를 추출해 후보 재순위에 반영함으로써, 커버리지와 무관하게 개인화 신호를 활용한다.
+핵심 원칙:
+- 현재 감상문 embedding이 추천의 기준이다.
+- 과거 감상문 embedding은 사용자의 언어적 취향을 누적하는 보조 신호다.
+- 앨범 embedding과 MusicBrainz 메타는 감상문 기반 추천을 보완하는 `+@` 신호다.
+- MusicBrainz 앨범이 `album_reference`에 없어도 감상문 embedding 기반 추천은 계속 동작해야 한다.
 
 ---
 
-## 문제 상황
+## 추천 기준
 
-클러스터링 기반 추천을 추가하면서 사용자의 과거 감상 앨범 embedding을 평균내어 취향 벡터를 만들 수 있게 되었다.
+사용자가 감상문을 작성하면 Spring Boot는 감상문 저장 후 FastAPI에 추천을 비동기로 요청한다.
 
-하지만 실제 운영 데이터에서는 사용자가 선택한 MusicBrainz 앨범이 AllAboutJazz 기반 추천 후보 DB인 `album_reference`와 항상 연결되지 않는다.
+```text
+POST /recommend/review
+{
+  review_id,
+  review_content,
+  user_id
+}
+```
 
-당시 추천 개인화 흐름:
+FastAPI는 `review_content`를 OpenAI embedding 모델로 변환한다.
+
+```text
+review_content
+    ↓
+current_review_embedding
+    ↓
+album_reference vector search
+```
+
+이 벡터가 추천의 1차 기준이다.
+
+사용자가 어떤 앨범을 선택했는지, 그 앨범이 `album_reference`에 연결되는지, 사용자의 과거 감상 이력이 충분한지는 모두 보조 조건이다. 이 조건들이 없더라도 현재 감상문 embedding만으로 추천은 성립한다.
+
+---
+
+## 개인화 신호 설계
+
+### 1. 과거 감상문 embedding
+
+추천 완료 시 FastAPI는 현재 감상문의 embedding을 Spring Boot 콜백에 포함한다.
+
+```text
+FastAPI 추천 완료
+    ↓
+POST /api/user-reviews/{reviewId}/recommendations
+    - recommendations[]
+    - reviewEmbedding
+    ↓
+Spring Boot
+    ↓
+user_reviews.review_embedding 저장
+```
+
+이후 같은 사용자가 새 감상문을 작성하면 FastAPI는 `user_id`로 과거 감상문 embedding을 조회한다.
+
+```text
+user_reviews.user_id
+    ↓
+user_reviews.review_embedding IS NOT NULL
+    ↓
+previous_review_embeddings
+```
+
+`TasteVectorService`는 과거 감상문 embedding의 평균을 사용자 취향 벡터로 보고, 현재 감상문 embedding과 블렌딩한다.
+
+```text
+query_vector =
+  current_review_embedding * 0.6
++ user_taste_vector        * 0.4
+```
+
+과거 감상문 embedding이 없으면 현재 감상문 embedding을 그대로 사용한다.
+
+이 신호의 장점:
+- 사용자가 직접 작성한 문장에 담긴 분위기, 감정, 선호 표현을 반영한다.
+- 사용자가 선택한 앨범이 `album_reference`와 연결되지 않아도 누적된다.
+- 추천 후보 DB의 앨범 커버리지와 독립적으로 개인화가 가능하다.
+
+관련 파일:
+- `backendPython/app/repositories/user_listened_album_repository.py`
+- `backendPython/app/services/taste_vector_service.py`
+- `backendPython/app/services/recommendation_service.py`
+- `backendJava/src/main/java/shop/jazzmate/jazzmateshop/recommendation/RecommendAlbumService.java`
+- `backendJava/src/main/java/shop/jazzmate/jazzmateshop/userReview/entity/UserReview.java`
+
+### 2. 감상 앨범 embedding
+
+사용자가 감상문 작성 시 선택한 MusicBrainz 앨범이 `album_reference.mb_release_group_id`와 연결될 수 있다면, 해당 후보 DB의 앨범 embedding도 취향 보조 신호로 사용한다.
 
 ```text
 user_reviews.mb_album_gid
@@ -28,103 +110,13 @@ user_reviews.mb_album_gid
 album_reference.mb_release_group_id
     ↓
 album_reference.embedding
-    ↓
-TasteVectorService에서 사용자 취향 벡터 생성
 ```
 
-이 연결이 실패하면 FastAPI는 사용자의 기존 감상 이력을 반영하지 못하고, 신규 감상문 embedding만으로 검색한다.
+다만 이 신호는 선택적이어야 한다.
 
----
+`mb_album`은 MusicBrainz release group 기반의 넓은 앨범 카탈로그이고, `album_reference`는 AllAboutJazz 수집 리뷰 기반의 추천 후보 DB다. 두 데이터셋의 범위가 다르기 때문에 모든 사용 앨범이 `album_reference`에 연결되지는 않는다.
 
-## 완료된 개선
-
-### 1. FastAPI 요청에 user_id 전달
-
-Spring Boot가 FastAPI 추천 요청을 보낼 때 `user_id`를 함께 전달하도록 변경했다.
-
-관련 파일:
-- `backendJava/src/main/java/shop/jazzmate/jazzmateshop/recommendation/client/AiRecommendationClient.java`
-- `backendPython/app/schemas/recommendation.py`
-
-### 2. 사용자 기존 감상 앨범 embedding 조회
-
-`UserListenedAlbumRepository`를 추가했다.
-
-역할:
-- `user_id`로 `user_reviews` 조회
-- `mb_album_gid`가 있는 감상문만 사용
-- 중복 앨범 제거
-- `album_reference.mb_release_group_id`로 연결
-- `album_reference.embedding`이 있는 앨범만 반환
-- embedding 차원이 1536이 아니면 오류 처리
-
-관련 파일:
-- `backendPython/app/repositories/user_listened_album_repository.py`
-- `backendPython/tests/unit/test_user_listened_album_repository.py`
-
-### 3. 취향 벡터 생성
-
-`TasteVectorService`를 추가했다.
-
-현재 계산식:
-
-```text
-query_vector = review_embedding * 0.6 + user_taste_vector * 0.4
-```
-
-`user_taste_vector`는 사용자의 기존 감상 앨범 embedding 평균이다.
-
-기존 감상 앨범 embedding이 없으면 신규 감상문 embedding을 그대로 사용한다.
-
-관련 파일:
-- `backendPython/app/services/taste_vector_service.py`
-- `backendPython/tests/unit/test_taste_vector_service.py`
-
-### 4. 추천 서비스 연결
-
-`RecommendationService`에 사용자 취향 벡터 흐름을 연결했다.
-
-처리 순서:
-
-```text
-감상문 embedding 생성
-    ↓
-사용자 기존 감상 앨범 embedding 조회
-    ↓
-기존 감상 앨범이 있으면 취향 벡터와 블렌딩
-    ↓
-match_albums() 검색
-    ↓
-추천 사유 생성
-    ↓
-Spring callback
-```
-
-관련 파일:
-- `backendPython/app/services/recommendation_service.py`
-- `backendPython/tests/unit/test_recommendation_service.py`
-
----
-
-## 검증 결과
-
-### 자동 테스트
-
-FastAPI 테스트:
-
-```text
-79 passed, 1 warning
-```
-
-Spring Boot 테스트:
-
-```text
-BUILD SUCCESSFUL
-```
-
-### 운영 데이터 연결률
-
-실제 Supabase 데이터 기준으로 `user_reviews.mb_album_gid`가 `album_reference.mb_release_group_id`와 얼마나 연결되는지 확인했다.
+운영 샘플에서 확인한 연결률:
 
 ```text
 mb_album_gid가 있는 감상문: 8건
@@ -133,120 +125,38 @@ album_reference.mb_release_group_id에서 찾힌 앨범: 2개
 embedding까지 있는 앨범: 1개
 
 연결률: 25.0%
-실제 취향 벡터 적용 가능률: 12.5%
+embedding 사용 가능률: 12.5%
 ```
 
-의미:
-- 사용자가 선택한 MusicBrainz 앨범 8개 중 2개만 AllAboutJazz 추천 후보 DB와 연결된다.
-- 실제 취향 벡터 계산에 사용할 수 있는 embedding은 1개뿐이다.
-- 현재 개인화 로직은 테스트상 동작하지만, 운영 데이터에서는 fallback 비율이 높다.
+따라서 감상 앨범 embedding은 추천의 기준이 아니라 `연결되는 경우에만 추가되는 보조 신호`로 취급한다. 연결된 embedding은 과거 감상문 embedding과 함께 개인화 embedding 목록에 포함되고, `TasteVectorService`에서 현재 감상문 embedding과 블렌딩된다.
 
----
+이 신호의 용도:
+- 사용자가 실제로 감상한 앨범이 추천 후보 DB에 있을 때 취향 정보를 강화한다.
+- 감상문 텍스트와 별개로 앨범 자체의 리뷰 요약 embedding을 반영할 수 있다.
+- 연결 실패 시 현재 감상문 embedding과 과거 감상문 embedding 경로로 fallback한다.
 
-## 원인 분석
+### 3. MusicBrainz 메타
 
-### 데이터 커버리지 차이
+앨범 embedding 연결률이 낮더라도 `mb_album` 자체의 메타데이터는 더 넓게 사용할 수 있다.
 
-현재 두 데이터셋의 범위가 다르다.
+사용하는 메타:
+- `artist_name`
+- `genres`
+- `first_release_year`
 
-| 데이터 | 범위 | 용도 |
-|---|---|---|
-| `mb_album` | MusicBrainz release group 기반 재즈 메타 | 사용자 앨범 검색/선택 |
-| `album_reference` | AllAboutJazz 리뷰 기반 앨범 후보 | 추천 후보 검색, embedding 검색 |
-
-사용자는 `mb_album`에서 넓은 범위의 발매물을 선택할 수 있지만, 추천 후보 embedding은 AllAboutJazz에서 수집된 앨범에만 있다.
-
-따라서 모든 `mb_album.gid`가 `album_reference.mb_release_group_id`로 연결될 수 없다.
-
-### 매칭 실패와 데이터 부재 구분
-
-연결되지 않은 `mb_album_gid`를 대상으로 `album_reference` 유사 후보를 확인했다.
-
-유사 후보 없음:
+FastAPI는 vector search로 후보를 최종 추천 개수보다 넉넉히 가져온 뒤, 사용자 과거 감상 이력의 MusicBrainz 메타와 후보 앨범 메타를 비교해 재순위한다.
 
 ```text
-The Cannonball Adderley Quintet - Autumn Leaves
-Sarah Vaughan - Misty
-The Dave Brubeck Quartet - Take Five
-Miles Davis - Blue Miles
-Wayne Shorter - Speak No Evil
+query_vector로 candidate_pool_size 후보 조회
+    ↓
+user_reviews.mb_album_gid → mb_album 메타 조회
+    ↓
+candidate.album_id → album_reference.mb_release_group_id → mb_album 메타 조회
+    ↓
+vector score + meta score로 최종 top_k 재순위
 ```
 
-유사 후보 있음:
-
-```text
-Art Blakey & The Jazz Messengers - Moanin'
-→ 후보: Kenny Washington - Moanin'
-```
-
-현재 샘플 기준으로는 매칭 로직 오류보다 `album_reference`에 해당 발매물이 없는 문제가 더 크다.
-
----
-
-## 검토한 개선 방향
-
-### 1. 입력 가능한 앨범을 album_reference로 제한
-
-기각.
-
-장점:
-- 취향 벡터 적용률은 높아진다.
-
-단점:
-- 사용자가 감상문을 작성할 수 있는 대상이 AllAboutJazz 수집 데이터로 제한된다.
-- MusicBrainz 검색을 도입한 의미가 줄어든다.
-- 싱글, EP, 스탠더드명 기반 release group, AllAboutJazz에 없는 앨범 감상을 반영할 수 없다.
-
-### 2. album_reference 매칭 로직만 먼저 개선
-
-보류.
-
-장점:
-- AllAboutJazz에 있는데 MusicBrainz 매칭이 실패한 일부 케이스를 회복할 수 있다.
-
-한계:
-- AllAboutJazz에 없는 발매물은 여전히 embedding을 만들 수 없다.
-- 현재 샘플에서는 매칭 실패보다 데이터 커버리지 차이가 더 큰 원인으로 보인다.
-
-### 3. MusicBrainz 메타 기반 fallback 개인화
-
-채택 및 구현 완료.
-
-핵심:
-- embedding이 있는 과거 감상 앨범은 기존처럼 취향 벡터에 반영한다.
-- embedding이 없는 과거 감상 앨범도 `mb_album` 메타로 반영한다.
-- 최종 후보를 vector similarity만으로 확정하지 않고, artist / genres / era 기반 점수를 더해 재순위한다.
-
----
-
-## 구현된 개선안
-
-### mb 메타 기반 재순위
-
-`match_albums()`에서 후보를 넉넉히 가져온 뒤, 사용자 과거 감상 이력의 MusicBrainz 메타와 후보 앨범 메타를 비교해 최종 순위를 조정한다.
-
-현재 추천 개인화 흐름:
-
-```text
-신규 감상문 embedding 생성
-    ↓
-[취향 벡터 경로] user_reviews.mb_album_gid
-    → album_reference.mb_release_group_id
-    → album_reference.embedding
-    → TasteVectorService: 감상문 embedding 60% + 취향 벡터 40% 블렌딩
-    ↓ (embedding 없는 과거 감상은 이 경로를 건너뜀)
-candidate_pool_size(50) 후보 조회
-    ↓
-[메타 재순위 경로] user_reviews.mb_album_gid
-    → mb_album.gid (embedding 없는 과거 감상도 포함)
-    → 아티스트 / 장르 / 연대 취향 프로필 생성
-    ↓
-후보 album_reference.id → mb_release_group_id → mb_album 메타 조회
-    ↓
-vector score 80% + meta score 20% 로 최종 top_k 재순위
-```
-
-구현 점수:
+현재 점수식:
 
 ```text
 final_score =
@@ -273,22 +183,91 @@ meta_score =
 - `backendPython/app/services/recommendation_rerank_service.py`
 - `backendPython/app/services/recommendation_service.py`
 
-테스트:
-- `backendPython/tests/unit/test_user_taste_metadata_repository.py`
-- `backendPython/tests/unit/test_album_metadata_repository.py`
-- `backendPython/tests/unit/test_recommendation_rerank_service.py`
-- `backendPython/tests/unit/test_recommendation_service.py`
+---
+
+## 전체 처리 흐름
+
+```text
+사용자 감상문 작성
+    ↓
+Spring Boot: user_reviews 저장, recommendation_status=PENDING
+    ↓
+Spring Boot → FastAPI: review_id, review_content, user_id 전달
+    ↓
+FastAPI: current_review_embedding 생성
+    ↓
+[개인화 보조 1]
+user_reviews.review_embedding 조회
+    → 과거 감상문 embedding 평균
+user_reviews.mb_album_gid → album_reference.embedding 조회
+    → 연결 가능한 감상 앨범 embedding
+    → 현재 감상문 embedding 60% + 개인화 embedding 평균 40%
+    ↓
+album_reference vector search
+    ↓
+[개인화 보조 2]
+감상 앨범이 album_reference에 연결되면 앨범 embedding을 개인화 embedding에 포함
+    ↓
+[개인화 보조 3]
+MusicBrainz artist / genre / era 메타로 후보 재순위
+    ↓
+추천 사유 생성
+    ↓
+FastAPI → Spring Boot callback
+    - recommendations[]
+    - reviewEmbedding
+    ↓
+Spring Boot: 추천 결과 저장, review_embedding 저장, recommendation_status=COMPLETED
+```
+
+---
+
+## fallback 정책
+
+개인화 신호는 추천의 필수 조건이 아니다.
+
+| 상황 | 처리 |
+|---|---|
+| 과거 감상문 embedding 없음 | 현재 감상문 embedding만으로 검색 |
+| 감상 앨범이 `album_reference`에 없음 | 앨범 embedding 보조 신호 생략 |
+| MusicBrainz 메타 없음 | vector score 순서 유지 |
+| 후보 앨범 메타 없음 | 해당 후보는 meta score 없이 평가 |
+| embedding 생성 실패 | 추천 실패, `FAILED` 콜백 |
+| vector search 실패 | 추천 실패, `FAILED` 콜백 |
+
+이 정책의 목적은 추천 기준을 안정적으로 유지하는 것이다.
+
+현재 감상문 embedding이 생성되고 `album_reference` vector search가 가능하면 추천은 진행한다. 과거 이력, 앨범 연결, 메타데이터는 있으면 더하는 신호로만 사용한다.
+
+---
+
+## 데이터셋 역할 구분
+
+| 데이터 | 범위 | 추천에서의 역할 |
+|---|---|---|
+| `user_reviews.review_content` | 사용자가 현재 작성한 감상문 | 추천 query의 원문 |
+| `user_reviews.review_embedding` | 추천 완료된 과거 감상문 embedding | 의미 기반 사용자 취향 벡터 |
+| `album_reference` | AllAboutJazz 리뷰 기반 추천 후보 | vector search 대상 |
+| `album_reference.embedding` | 평론가 리뷰 요약 기반 앨범 embedding | 후보 검색 및 연결 가능한 앨범 보조 신호 |
+| `mb_album` | MusicBrainz release group 기반 재즈 메타 | 사용자 앨범 선택, 메타 기반 재순위 |
+
+중요한 구분:
+- `album_reference`는 추천 후보 DB다.
+- `mb_album`은 사용자가 감상 앨범을 선택하는 넓은 메타 DB다.
+- 두 데이터셋은 1:1로 연결되지 않는다.
+- 그래서 추천의 주 기준은 특정 앨범 연결이 아니라 감상문 embedding이어야 한다.
 
 ---
 
 ## 구현 시 고려사항
 
-- `album_reference` 후보에 MusicBrainz 메타가 없는 경우 기존 vector score만 사용한다.
-- 메타 점수는 추천을 뒤집기보다 동률/근접 후보 재순위 용도로 시작한다.
+- 현재 감상문 embedding은 매 추천 요청마다 새로 생성한다.
+- 추천 성공 콜백에는 `reviewEmbedding`을 포함해 다음 추천의 개인화 신호로 누적한다.
+- 과거 감상문 embedding은 같은 `user_id`의 저장된 embedding만 사용한다.
+- 사용자의 과거 감상문 수가 적을 때는 현재 감상문 embedding의 영향이 더 커야 한다.
+- 앨범 embedding은 연결 가능한 경우에만 반영하고, 연결률을 추천 가능 여부로 해석하지 않는다.
+- MusicBrainz 메타 점수는 추천 결과를 과도하게 뒤집기보다 근접 후보 재순위 용도로 사용한다.
 - 특정 아티스트 반복 추천이 과도해지지 않도록 artist 가중치는 낮게 둔다.
-- 사용자 감상 이력이 적을 때는 메타 점수 영향도를 낮춘다.
-- 운영 검증에서는 기존 감상 이력이 있는 사용자와 없는 사용자를 분리해 비교한다.
-- 기존 감상 embedding 조회 실패(`RepositoryError`)와 메타 조회 실패(`RepositoryError`)는 모두 추천 실패로 처리하고 `FAILED` 콜백을 전송한다.
 
 ---
 
@@ -301,17 +280,23 @@ FastAPI 테스트:
 ```
 
 검증한 케이스:
-- embedding 이력이 있으면 기존 취향 벡터 사용
-- embedding이 없는 이력도 메타 점수에 반영
-- 이력이 없으면 기존 vector 검색과 동일
-- 후보 메타가 없으면 vector score만 사용
-- 메타 조회 실패(`RepositoryError`) 시 `FAILED` 콜백 전송
-- 기존 감상 embedding 조회 실패(`RepositoryError`) 시 `FAILED` 콜백 전송
+- 감상문 embedding 생성 후 vector search 수행
+- 과거 감상문 embedding이 있으면 취향 벡터로 블렌딩
+- 과거 감상문 embedding이 없으면 현재 감상문 embedding만 사용
+- 추천 완료 콜백에 `reviewEmbedding` 포함
+- `reviewEmbedding`을 Spring Boot에서 `user_reviews.review_embedding`에 저장
+- MusicBrainz 메타가 있으면 후보 재순위
+- 후보 메타가 없으면 vector score 유지
+- embedding 생성 실패 시 `FAILED` 콜백
+- vector search 실패 시 `FAILED` 콜백
+
+---
 
 ## 다음 작업
 
-1. 운영 데이터 기준 추천 결과 비교
-2. `vector_score` / `meta_score` 가중치 조정
-3. 특정 아티스트 반복 추천 여부 확인
-4. 후보 pool size 50의 처리 시간 영향 측정
-5. DB에도 `recommend_album.album_artist`, `recommend_album.album_title` `NOT NULL` 제약 추가를 검토한다.
+1. 운영 데이터에서 `user_reviews.review_embedding` 저장률을 측정한다.
+2. 사용자별 과거 감상문 embedding 개수 분포를 확인한다.
+3. 현재 감상문 0.6 / 과거 취향 벡터 0.4 가중치를 추천 품질 기준으로 조정한다.
+4. 과거 감상문 embedding과 감상 앨범 embedding을 동일 가중 평균으로 둘지, 신호별 가중치를 분리할지 결정한다.
+5. MusicBrainz meta score 20%가 추천 결과를 과도하게 바꾸지 않는지 검증한다.
+6. 특정 아티스트 반복 추천 여부를 운영 결과로 확인한다.
