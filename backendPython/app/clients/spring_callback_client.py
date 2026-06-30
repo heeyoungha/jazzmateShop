@@ -24,9 +24,15 @@ class SpringCallbackClient:
         self.http_client = http_client
 
     async def send_completed_result(
-        self, review_id: int, recommendations: Iterable[RecommendationCallbackItem]
+        self,
+        review_id: int,
+        recommendations: Iterable[RecommendationCallbackItem],
+        review_embedding: list[float] | None = None,
     ) -> None:
-        await self._post_callback(review_id, RecommendationCallbackRequest.completed(recommendations))
+        await self._post_callback(
+            review_id,
+            RecommendationCallbackRequest.completed(recommendations, review_embedding),
+        )
 
     async def send_failed_result(
         self, review_id: int, error_code: RecommendationErrorCode, message: str
@@ -40,7 +46,7 @@ class SpringCallbackClient:
         url = f"{self.base_url}{self.CALLBACK_PATH_TEMPLATE.format(review_id=review_id)}"
 
         try:
-            response = await self.http_client.post(url, json=payload.model_dump(by_alias=True, mode="json"))
+            response = await self.http_client.post(url, json=payload.model_dump(by_alias=True, mode="json", exclude_none=True))
             if not 200 <= response.status_code < 300:
                 raise CallbackError(
                     f"Spring callback failed: status={response.status_code}, body={response.text}"

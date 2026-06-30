@@ -42,6 +42,8 @@ class RecommendationCallbackRequest(BaseModel):
         default=None, alias="errorCode"
     )
     message: str | None = None
+    # 감상문 embedding. COMPLETED 시 포함, 저장 실패해도 추천 결과에 영향 없음 (best-effort).
+    review_embedding: list[float] | None = Field(default=None, alias="reviewEmbedding")
 
     @model_validator(mode="after")
     def validate_status_payload(self) -> "RecommendationCallbackRequest":
@@ -58,9 +60,15 @@ class RecommendationCallbackRequest(BaseModel):
 
     @classmethod
     def completed(
-        cls, recommendations: Iterable[RecommendationCallbackItem]
+        cls,
+        recommendations: Iterable[RecommendationCallbackItem],
+        review_embedding: list[float] | None = None,
     ) -> "RecommendationCallbackRequest":
-        return cls(status="COMPLETED", recommendations=list(recommendations))
+        return cls(
+            status="COMPLETED",
+            recommendations=list(recommendations),
+            review_embedding=review_embedding,
+        )
 
     @classmethod
     def failed(

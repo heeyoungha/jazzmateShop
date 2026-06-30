@@ -31,6 +31,7 @@ class RecommendationService:
         album_embedding_repository: AlbumEmbeddingRepository,
         recommendation_reason_service: RecommendationReasonService,
         spring_callback_client: SpringCallbackClient,
+        user_review_embedding_repository: UserReviewEmbeddingRepository,
         user_listened_album_repository: UserListenedAlbumRepository,
         user_taste_metadata_repository: UserTasteMetadataRepository,
         album_metadata_repository: AlbumMetadataRepository,
@@ -43,6 +44,7 @@ class RecommendationService:
         self.album_embedding_repository = album_embedding_repository
         self.recommendation_reason_service = recommendation_reason_service
         self.spring_callback_client = spring_callback_client
+        self.user_review_embedding_repository = user_review_embedding_repository
         self.user_listened_album_repository = user_listened_album_repository
         self.user_taste_metadata_repository = user_taste_metadata_repository
         self.album_metadata_repository = album_metadata_repository
@@ -65,7 +67,10 @@ class RecommendationService:
             return
         
         try:
-            reviewed_album_embeddings = self.user_listened_album_repository.find_by_user_id(
+            previous_review_embeddings = self.user_review_embedding_repository.find_by_user_id(
+                user_id
+            )
+            listened_album_embeddings = self.user_listened_album_repository.find_by_user_id(
                 user_id
             )
         except RepositoryError:
@@ -78,9 +83,10 @@ class RecommendationService:
 
         # 감상 이력이 있으면 감상문 벡터와 취향 벡터를 블렌딩한다
         query_vector = embedding
-        if reviewed_album_embeddings:
+        taste_embeddings = previous_review_embeddings + listened_album_embeddings
+        if taste_embeddings:
             query_vector = self.taste_vector_service.build_query_vector(
-                embedding, reviewed_album_embeddings
+                embedding, taste_embeddings
             )
 
         # 검색 벡터로 유사 앨범 후보를 조회한다
@@ -133,7 +139,7 @@ class RecommendationService:
         # 완료 결과는 Spring Boot 콜백 API로 전달한다
         try:
             await self.spring_callback_client.send_completed_result(
-                review_id, recommendations
+                review_id, recommendations, embedding
             )
         except Exception as exc:
             logger.exception("Spring callback failed: %s", exc)

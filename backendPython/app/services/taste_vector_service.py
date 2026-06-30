@@ -16,18 +16,18 @@ class TasteVectorService:
     def build_query_vector(
         self,
         review_embedding: list[float],
-        reviewed_album_embeddings: list[list[float]],
+        personalization_embeddings: list[list[float]],
     ) -> list[float]:
         
         self._validate_vector(review_embedding)
 
-        if not reviewed_album_embeddings:
+        if not personalization_embeddings:
             return review_embedding
 
-        for vector in reviewed_album_embeddings:
+        for vector in personalization_embeddings:
             self._validate_vector(vector)
 
-        taste_vector = self._mean_vector(reviewed_album_embeddings)
+        taste_vector = self._mean_vector(personalization_embeddings)
         
         return [
             review_value * self.review_weight + taste_value * self.taste_weight

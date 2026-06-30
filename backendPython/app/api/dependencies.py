@@ -5,6 +5,7 @@ from app.clients.spring_callback_client import SpringCallbackClient
 from app.repositories.album_embedding_repository import AlbumEmbeddingRepository
 from app.repositories.album_metadata_repository import AlbumMetadataRepository
 from app.repositories.user_listened_album_repository import UserListenedAlbumRepository
+from app.repositories.user_review_embedding_repository import UserReviewEmbeddingRepository
 from app.repositories.user_taste_metadata_repository import UserTasteMetadataRepository
 from app.services.embedding_service import EmbeddingService
 from app.services.recommendation_reason_service import RecommendationReasonService
@@ -35,6 +36,7 @@ def get_recommendation_service(request: Request) -> RecommendationService:
             openai_client=chat_client
         ),
         spring_callback_client=SpringCallbackClient(http_client=spring_http_client),
+        user_review_embedding_repository=UserReviewEmbeddingRepository(database=database),
         user_listened_album_repository=UserListenedAlbumRepository(database=database),
         user_taste_metadata_repository=UserTasteMetadataRepository(database=database),
         album_metadata_repository=AlbumMetadataRepository(database=database),
