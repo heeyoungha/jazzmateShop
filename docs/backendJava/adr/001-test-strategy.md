@@ -14,7 +14,7 @@ JazzmateShop 백엔드는 TDD 방식으로 구현한다. 테스트 코드를 먼
 
 ```
 Phase 1: 순수 단위        DtoFactoryTest
-Phase 2: Repository       UserReviewRepositoryTest (@DataJpaTest, H2)
+Phase 2: Repository       UserReviewRepositoryTest (@DataJpaTest, Docker PostgreSQL + pgvector)
 Phase 3: Service 단위     AlbumServiceTest → RecommendAlbumServiceTest → UserReviewServiceTest
 Phase 4: EventListener    RecommendationEventListenerTest
 Phase 5: Controller 슬라이스  GlobalExceptionHandlerTest → UserReviewControllerTest
@@ -26,7 +26,7 @@ Phase 6: 통합 테스트      RecommendationFlowIntegrationTest (@SpringBootTes
 | 레이어 | 도구 | 검증 대상 |
 |--------|------|-----------|
 | 순수 단위 | JUnit5 only | Spring 컨텍스트 불필요, 가장 빠름 |
-| Repository | `@DataJpaTest` + H2 | JPA 쿼리/매핑만 검증, 전체 컨텍스트 불필요 |
+| Repository | `@DataJpaTest` + Docker PostgreSQL + pgvector | JPA 쿼리/매핑과 `vector(1536)` 컬럼 매핑 검증, 전체 컨텍스트 불필요 |
 | Service | Mockito | 비즈니스 로직, 상태 전이, 이벤트 발행 |
 | Controller `@WebMvcTest` | MockMvc | HTTP 상태코드, 응답 래핑 계약, `@Valid` → 400, 예외 → 404/500 포맷 |
 | 통합 | `@SpringBootTest` | 성공 비즈니스 흐름 전체, AFTER_COMMIT + @Async 타이밍 |
@@ -54,6 +54,35 @@ assertThat(result.getRecommendations()).isEmpty();
 ```
 
 상태 기반 검증은 `PENDING`, `COMPLETED`, `FAILED` 분기와 retry 정책을 명확히 보호한다.
+
+---
+
+## Decision 2-1: Repository 테스트 DB는 H2 대신 Docker PostgreSQL + pgvector를 사용한다
+
+### Context
+
+`user_reviews.review_embedding`은 pgvector의 `vector(1536)` 컬럼이다.
+H2는 pgvector 타입과 연산자를 지원하지 않으므로, H2 기반 Repository 테스트는 실제 매핑 문제를 숨기거나 테스트 환경 전용 우회 설정을 만들게 된다.
+
+### Decision
+
+Repository 테스트는 `backendJava/docker-compose.test-db.yml`의 `pgvector/pgvector:pg16` 컨테이너를 사용한다.
+
+테스트 profile은 기본적으로 아래 로컬 DB를 바라본다.
+
+```text
+jdbc:postgresql://localhost:55432/jazzmate_test
+```
+
+`@DataJpaTest`가 datasource를 embedded DB로 교체하지 않도록 `spring.test.database.replace=none`을 유지한다.
+
+### Consequences
+
+- Supabase 개발/운영 DB를 테스트가 건드리지 않는다.
+- `vector(1536)` DDL, pgvector extension, JPA `PGvector` 매핑을 실제 PostgreSQL에서 검증한다.
+- 테스트 전 Docker DB가 떠 있어야 한다.
+
+상세 설정과 트러블슈팅은 [pgvector 설정 노트](../pgvector-jpa-and-test-db.md)를 따른다.
 
 ---
 

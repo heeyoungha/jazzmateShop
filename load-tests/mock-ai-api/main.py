@@ -10,12 +10,15 @@ from pydantic import BaseModel, Field
 class RecommendByReviewRequest(BaseModel):
     review_id: int = Field(gt=0)
     review_content: str = Field(min_length=1)
+    user_id: str = Field(min_length=1)
 
 
 app = FastAPI(title="JazzmateShop Mock AI API")
 
 SPRING_BASE_URL = os.getenv("SPRING_BASE_URL", "http://java-backend:8080").rstrip("/")
 EMBEDDING_DELAY_SECONDS = int(os.getenv("MOCK_EMBEDDING_DELAY_MS", "300")) / 1000
+SEARCH_DELAY_SECONDS = int(os.getenv("MOCK_SEARCH_DELAY_MS", "150")) / 1000
+RERANK_DELAY_SECONDS = int(os.getenv("MOCK_RERANK_DELAY_MS", "250")) / 1000
 REASON_DELAY_SECONDS = int(os.getenv("MOCK_REASON_DELAY_MS", "700")) / 1000
 CALLBACK_TIMEOUT_SECONDS = float(os.getenv("MOCK_CALLBACK_TIMEOUT_SECONDS", "10"))
 RECOMMENDATION_COUNT = int(os.getenv("MOCK_RECOMMENDATION_COUNT", "5"))
@@ -40,6 +43,8 @@ def build_recommendations() -> list[dict[str, Any]]:
 
 async def complete_recommendation(review_id: int) -> None:
     await asyncio.sleep(EMBEDDING_DELAY_SECONDS)
+    await asyncio.sleep(SEARCH_DELAY_SECONDS)
+    await asyncio.sleep(RERANK_DELAY_SECONDS)
     await asyncio.sleep(REASON_DELAY_SECONDS)
 
     payload = {
@@ -68,6 +73,8 @@ async def recommend_by_review(
 ) -> dict[str, str]:
     if not request.review_content.strip():
         raise HTTPException(status_code=400, detail="review_content is required")
+    if not request.user_id.strip():
+        raise HTTPException(status_code=400, detail="user_id is required")
 
     background_tasks.add_task(complete_recommendation, request.review_id)
     return {"status": "accepted"}

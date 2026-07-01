@@ -5,7 +5,6 @@
 - 상세 결과/명령/해석: `load-tests/recommendation-e2e-results.md`
 - k6 raw summary: `load-tests/*summary.json`
 - Grafana/Prometheus 캡처: `load-tests/monitoring/`
-- 로드맵 요약: `docs/고도화.md`
 
 `docs/고도화.md`에는 결론과 링크만 남기고, 실행 명령/표/로그 해석은 이 문서에 누적한다.
 
@@ -13,7 +12,7 @@
 
 - 대상 흐름: `POST /api/user-reviews` -> `GET /api/user-reviews/{id}` polling -> terminal status 확인
 - 종료 상태: `COMPLETED`, `FAILED`, `MAX_WAIT_SECONDS` 초과 timeout
-- 목적: polling API 단독 성능이 아니라, 감상문 제출부터 추천 완료 확인까지의 end-to-end 지연 시간을 측정한다.
+- 목적: 감상문 제출부터 추천 완료 확인까지의 end-to-end 지연 시간을 측정한다.
 
 ---
 
@@ -225,13 +224,201 @@ Spring 레이어(Hikari Pending = 0, JVM Threads 정상)는 문제가 없었으�
 | Spring callback timeout 누적 | `httpx.ConnectTimeout`, `CallbackError` 로그 확인됨 |
 | 후보 pool 크기 | 클러스터링/재순위 연산 비용이 VU 증가에 비례해 증가 |
 
-### 원인 특정을 위해 필요한 다음 테스트
+### 원인 특정 과정
 
-- [ ] **FastAPI 단독 부하 테스트** — Spring 없이 FastAPI `/recommend` 엔드포인트만 직접 압박해서 처리량 한계(RPS) 측정. Spring callback 경로를 배제하고 추천 처리 자체의 포화 지점 확인.
-- [ ] **FastAPI 내부 구간별 latency 측정** — pgvector 조회 / 클러스터링 / 재순위 각 단계의 소요 시간을 로그 또는 OpenTelemetry로 분리해서 어느 단계가 가장 오래 걸리는지 확인.
-- [ ] **callback timeout 비율 측정** — FastAPI 로그에서 `ConnectTimeout` / `CallbackError` 건수를 집계해서 처리는 완료됐으나 callback이 실패한 비율 확인. 추천 완료 후 결과 전달 실패인지, 추천 처리 자체가 밀리는 건지 분리 가능.
-- [ ] **worker 수 변경 비교** — FastAPI uvicorn worker 수를 늘린 뒤 동일 조건 재측정. `completion_coverage`가 개선되면 worker 부족이 주원인.
-- [ ] **VU 단계별 측정** — 100 / 200 / 300 / 500 VU로 단계적으로 올려 `completion_coverage`가 꺾이는 정확한 임계 VU 확인.
+#### 1단계 — 병목 위치 좁히기 체크리스트
+
+1000 VU 테스트 직후, 다음 순서로 병목 위치를 좁혔다.
+
+| 체크 항목 | 확인 방법 | 결과 |
+|---|---|---|
+| Spring Tomcat thread 포화 | Grafana `Tomcat Busy Threads` | 최대 4 — 정상 |
+| Hikari DB connection pool 고갈 | Grafana `Hikari Pending Connections` | 0 유지 — 정상 |
+| Spring 레이어 문제 | 위 두 지표 종합 | Spring은 병목 아님 |
+| FastAPI callback 실패 | FastAPI 로그 `ConnectTimeout`, `CallbackError` | **다수 발생** |
+
+Spring이 여유로운데 callback이 실패했으므로, **FastAPI → Spring 구간**에 문제가 있다고 판단했다.
+
+#### 2단계 — 구간별 latency 측정
+
+추천 처리 지연인지 callback 전달 실패인지 분리하기 위해 `recommendation_service.py`에 구간별 DEBUG 로그를 추가했다.
+
+```text
+embedding done       | review_id=7761 | elapsed=0.000s
+pgvector search done | review_id=7761 | elapsed=1.870s   ← 최대 2.1s
+rerank done          | review_id=7761 | elapsed=0.479s
+reason generation done | review_id=7761 | elapsed=1.209s ← 최대 3.0s
+processing done, sending callback | review_id=7761 | total_elapsed=4.769s
+```
+
+`processing done, sending callback` 로그는 찍혔지만 `callback done` 로그는 찍히지 않았다.
+즉 **추천 처리는 완료됐으나 Spring callback 전달에서 실패**하고 있었다.
+
+#### 3단계 — callback 실패 원인 가설 수립
+
+FastAPI 로그에서 전체 스택트레이스를 확인했다.
+
+```text
+ai-api-1  | ERROR:app.services.recommendation_service:Spring callback failed:
+ai-api-1  | Traceback (most recent call last):
+ai-api-1  |   File ".../httpcore/_async/connection.py", line 124, in _connect
+ai-api-1  |     stream = await self._network_backend.connect_tcp(**kwargs)
+ai-api-1  |   File ".../httpcore/_exceptions.py", line 14, in map_exceptions
+ai-api-1  |     raise to_exc(exc) from exc
+ai-api-1  | httpcore.ConnectTimeout
+ai-api-1  |
+ai-api-1  | The above exception was the direct cause of the following exception:
+ai-api-1  |
+ai-api-1  |   File ".../app/clients/spring_callback_client.py", line 43, in _post_callback
+ai-api-1  |     response = await self.http_client.post(url, ...)
+ai-api-1  | httpx.ConnectTimeout
+ai-api-1  |
+ai-api-1  |   File ".../app/clients/spring_callback_client.py", line 51, in _post_callback
+ai-api-1  |     raise CallbackError(str(exc)) from exc
+ai-api-1  | app.core.exceptions.CallbackError
+```
+
+`connect_tcp` 단계에서 TCP 연결 자체를 못 맺고 있었다. Spring이 여유롭다는 건 Grafana에서 이미 확인됐으므로 "Spring이 바빠서"는 아니었다.
+
+여기서 스택트레이스만으로 원인을 확정할 수는 없었다. 다만 `httpx.AsyncClient()` 기본값이 `max_connections=10`으로, 싱글 프로세스에서 동시에 수백 건 callback을 보내려 하면 pool이 꽉 차서 새 연결을 못 맺을 수 있다는 가설을 세웠다.
+
+이를 검증하기 위해 pool을 100으로 늘려서 재측정했다.
+
+**왜 풀 부족이 ConnectTimeout으로 나타나나**
+
+httpx의 `AsyncClient`는 내부적으로 커넥션 풀을 가지고 있다. 풀이 가득 찬 상태에서 새 요청이 오면:
+
+```
+새 요청 들어옴
+  └─ 풀에서 커넥션 꺼내려 함
+       └─ 풀이 꽉 참 → 빈 슬롯 대기
+            └─ 대기 시간이 connect_timeout 초과
+                 └─ ConnectTimeout 발생
+```
+
+실제로 Spring이 죽어있거나 네트워크 문제가 아니라, **연결 자체를 시도도 못 하고** 풀 대기 중에 타임아웃이 난 것이다.
+
+**왜 에러 메시지가 오해를 유도하나**
+
+`connect_tcp`에서 터진 것처럼 보이지만, 풀 대기 타임아웃과 실제 TCP 연결 타임아웃이 같은 `ConnectTimeout`으로 올라온다. httpx가 두 케이스를 구분하지 않고 동일한 예외로 처리하기 때문에 처음엔 Spring 서버 문제처럼 보일 수 있다.
+
+#### 4단계 — connection pool 확장 후 재측정 (500 VU)
+
+```python
+httpx.AsyncClient(limits=httpx.Limits(max_connections=100, max_keepalive_connections=20))
+```
+
+500 VU 조건으로 재측정한 결과:
+
+| 항목 | 수정 전 (1000 VU) | 수정 후 (500 VU) |
+|---|---:|---:|
+| submitted | 1,374 | 1,328 |
+| completed | 374 | **998** |
+| completion coverage | 27.2% | **75.2%** |
+| ConnectTimeout | 다수 | **0건** |
+| callback done 로그 | - | **1,328건 (전량 성공)** |
+
+callback은 전량 성공했다. 남은 330건 미완료는 callback 실패가 아니라 **k6 MAX_WAIT_SECONDS(180s) 초과**로 k6가 먼저 포기한 것이다.
+
+FastAPI 로그를 확인하면 callback done이 1,328건으로 제출 전체와 일치한다. 즉 FastAPI는 330건도 결국 처리 완료하고 Spring에 전달했지만, k6가 이미 타임아웃으로 집계를 끊은 뒤였다. **실제 데이터 유실은 없다.**
+
+결론: connection pool 확장으로 callback 전달 문제는 완전히 해결됐다. 남은 과제는 처리 속도(pgvector 조회 latency, reason generation 시간)이며, 이는 Supabase 원격 조회 특성상 구조적 접근이 필요한 영역이다.
+
+#### 5단계 — 처리 속도 병목 분석
+
+callback 문제 해결 후 `time_to_completed avg=34s`가 남아있어 구간별 로그로 원인을 분석했다.
+
+```text
+pgvector search: 0.05s ~ 1.3s
+rerank:          0.09s ~ 0.27s
+reason generation: 0.009s ~ 3.2s  ← 주범
+```
+
+reason generation이 mock임에도 최대 3.2s가 나왔다. mock 자체는 거의 0초여야 하는데, 같은 시점에 시작된 요청들의 elapsed가 계단식으로 줄어드는 패턴이 관찰됐다:
+
+```text
+review_id=9094 | reason generation elapsed=3.236s
+review_id=9088 | reason generation elapsed=2.750s
+review_id=9097 | reason generation elapsed=1.747s
+review_id=9090 | reason generation elapsed=0.997s
+review_id=9096 | reason generation elapsed=0.517s
+review_id=9089 | reason generation elapsed=0.009s
+```
+
+이는 reason generation 자체가 느린 게 아니라, **asyncio 이벤트 루프가 다른 코루틴을 처리하느라 늦게 돌아오는 대기 시간**이 elapsed에 포함된 것이다. 싱글 프로세스에서 동시 요청이 몰리면 이벤트 루프 대기 줄이 길어져 처리 시간이 늘어나는 구조적 한계다.
+
+#### candidate_pool_size 축소 실험 (50 → 20)
+
+pgvector 조회 범위를 줄이면 처리 시간이 줄어들 것이라는 가설로 pool_size를 20으로 줄여 재측정했다.
+
+| 항목 | pool_size=50 | pool_size=20 |
+|---|---:|---:|
+| completed | 998 | 871 |
+| completion coverage | 75.2% | 72.0% |
+| time_to_completed avg | 34.43s | 37.81s |
+
+오히려 악화됐다. pgvector 조회 시간 자체는 줄었지만, 병목이 pgvector가 아닌 이벤트 루프 대기였으므로 전체 처리 시간은 개선되지 않았다. pool_size는 50으로 복원했다.
+
+**결론**: 처리 속도 병목은 pgvector 조회량이 아니라 **싱글 프로세스 이벤트 루프 대기**다. worker 수를 늘려 이벤트 루프를 분산시키는 것이 다음 시도다.
+
+**왜 reason generation만 유난히 긴가**
+
+다른 단계는 이벤트 루프에 코루틴 1개만 올라가는데, reason generation은 `asyncio.gather`로 top-k 3개를 동시에 띄운다. 요청 1건당 코루틴 수가 다른 단계의 3배다.
+
+```
+embedding:        VU × 1 코루틴
+pgvector search:  VU × 1 코루틴
+rerank:           VU × 1 코루틴 (동기)
+reason generation: VU × 3 코루틴  ← 이벤트 루프 부하 3배
+```
+
+500VU에서 reason generation 구간에만 1,500개 코루틴이 이벤트 루프 1개에 몰리므로, 대기 줄이 다른 단계보다 3배 길어진다.
+
+**worker 수를 늘리면 코루틴이 분산되는가**
+
+uvicorn `--workers 4`는 멀티 프로세스로, 이벤트 루프가 4개 생긴다. 500VU가 4개 루프에 분산되면 각 루프가 약 125VU(reason generation 기준 375코루틴)씩 처리하게 된다.
+
+프로세스마다 `lifespan`에서 독립적으로 `httpx.AsyncClient`가 생성되므로 connection pool도 프로세스별로 분리된다. worker 4개 기준 실질적인 pool은 `100 × 4 = 400`개다.
+
+#### 6단계 — worker 4개로 재측정 (500 VU)
+
+```
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]
+```
+
+| 항목 | worker=1 | worker=4 |
+|---|---:|---:|
+| submitted | 1,328 | 3,709 |
+| completed | 998 | **3,709** |
+| completion coverage | 75.2% | **100%** |
+| time_to_completed avg | 34.43s | **11.12s** |
+| time_to_completed p95 | 60s | **21.01s** |
+| time_to_completed max | 1m6s | **39.03s** |
+| e2e_timeout | 발생 | **0건** |
+| 모든 threshold | 미통과 | **전부 통과** |
+
+submitted와 completed가 3,709건으로 완전히 일치했다. worker=1 대비 처리 시간이 avg 기준 **3배 개선(34s → 11s)** 됐고, 미완료 건수도 0이 됐다.
+
+이벤트 루프가 4개로 분산되면서 reason generation 구간의 코루틴 대기 줄이 해소된 것이 원인이다. 가설이 데이터로 검증됐다.
+
+#### 7단계 — worker 4개 + 1000 VU 재측정
+
+| 항목 | worker=1 (1000VU) | worker=4 (500VU) | worker=4 (1000VU) |
+|---|---:|---:|---:|
+| submitted | 1,374 | 3,709 | 4,227 |
+| completed | 374 | 3,709 | **3,930** |
+| completion coverage | 27.2% | 100% | **92.9%** |
+| time_to_completed avg | - | 11.12s | **19.61s** |
+| time_to_completed p95 | - | 21.01s | **33.02s** |
+| time_to_completed max | - | 39.03s | **57.05s** |
+| e2e_timeout | 다수 | 0건 | **0건** |
+| 모든 threshold | 미통과 | 전부 통과 | **전부 통과** |
+
+1000VU에서도 모든 threshold를 통과했다. 미완료 297건(4,227 - 3,930)은 k6 MAX_WAIT_SECONDS 초과로 집계에서 빠진 것이며, FastAPI 로그상 callback 실패는 아니다.
+
+500VU 대비 VU가 2배로 늘어 처리 시간이 avg 11s → 19s로 늘었지만, worker=1 시절 27.2%였던 coverage가 92.9%까지 회복됐다.
+
+**최종 결론**: httpx connection pool 확장 + uvicorn worker 4개 조합으로 1000VU에서도 안정적으로 동작하는 것을 확인했다. 처음 27.2%였던 completion coverage가 단계적 원인 분석과 두 가지 수정으로 92.9%까지 개선됐다.
 
 ---
 

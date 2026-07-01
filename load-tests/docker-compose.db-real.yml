@@ -16,7 +16,7 @@ services:
     ports:
       - "${E2E_DB_PORT:-54330}:5432"
     volumes:
-      - ./polling-fake-db-init.sql:/docker-entrypoint-initdb.d/001_e2e_fake_db.sql:ro
+      - ./fixtures/polling-fake-db-init.sql:/docker-entrypoint-initdb.d/001_e2e_fake_db.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U jazzmate -d jazzmate_e2e_loadtest"]
       interval: 5s
@@ -37,6 +37,7 @@ services:
     environment:
       MOCK_OPENAI: "true"
       SPRING_BASE_URL: http://java-backend:8080
+      LOG_LEVEL: "DEBUG"
 
   java-backend:
     build:

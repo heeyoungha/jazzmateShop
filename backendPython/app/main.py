@@ -1,5 +1,6 @@
 import logging
 from contextlib import asynccontextmanager
+from types import SimpleNamespace
 
 import httpx
 from fastapi import FastAPI, Request
@@ -11,7 +12,35 @@ from app.api.recommend_router import router as recommend_router
 from app.core.config import settings
 from app.core.exceptions import ConfigurationError
 
+logging.basicConfig(level=settings.LOG_LEVEL.upper())
 log = logging.getLogger(__name__)
+
+class FakeEmbeddings:
+    async def create(self, model: str, input: str):
+        del model
+        seed = sum(ord(char) for char in input) % 997
+        vector = [
+            (((seed + index * 17) % 2000) / 1000.0) - 1.0
+            for index in range(settings.EMBEDDING_DIMENSIONS)
+        ]
+        return SimpleNamespace(data=[SimpleNamespace(embedding=vector)])
+
+class FakeChatCompletions:
+    async def create(self, model: str, messages: list[dict[str, str]]):
+        del model, messages
+        message = SimpleNamespace(
+            content="실제 DB 후보를 기반으로 생성한 부하 테스트용 추천 사유입니다."
+        )
+        return SimpleNamespace(choices=[SimpleNamespace(message=message)])
+
+# MOCK_OPENAI=true일 때 실제 OpenAI 대신 사용되는 가짜 클라이언트
+class FakeOpenAIClient:
+    def __init__(self):
+        self.embeddings = FakeEmbeddings()
+        self.chat = SimpleNamespace(completions=FakeChatCompletions())
+
+    async def aclose(self) -> None:
+        return None
 
 
 def create_database_client():
@@ -30,10 +59,14 @@ def create_database_client():
 
 
 def create_openai_embedding_client() -> AsyncOpenAI:
+    if settings.MOCK_OPENAI:
+        return FakeOpenAIClient()
     return AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
 
 
 def create_openai_chat_client() -> AsyncOpenAI:
+    if settings.MOCK_OPENAI:
+        return FakeOpenAIClient()
     return AsyncOpenAI(
         api_key=settings.OPENAI_API_KEY,
         timeout=settings.OPENAI_TIMEOUT_SECONDS,
@@ -42,7 +75,7 @@ def create_openai_chat_client() -> AsyncOpenAI:
 
 
 def create_spring_http_client() -> httpx.AsyncClient:
-    return httpx.AsyncClient()
+    return httpx.AsyncClient(limits=httpx.Limits(max_connections=100, max_keepalive_connections=20))
 
 
 async def _close_resource(resource) -> None:

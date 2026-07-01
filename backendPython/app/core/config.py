@@ -4,6 +4,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=(".env", "../.env"), extra="ignore")
 
+    LOG_LEVEL: str = "INFO"
     SUPABASE_URL: str
     SUPABASE_SERVICE_ROLE_KEY: str
     OPENAI_API_KEY: str
@@ -15,6 +16,8 @@ class Settings(BaseSettings):
     SPRING_BASE_URL: str
     OPENAI_TIMEOUT_SECONDS: float
     OPENAI_MAX_RETRIES: int = 2
+    MOCK_OPENAI: bool = False
+    
 
 
 settings = Settings()

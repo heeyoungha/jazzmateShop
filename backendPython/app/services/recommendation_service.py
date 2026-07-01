@@ -1,4 +1,5 @@
 import logging
+import time
 from typing import Iterable
 
 from app.clients.spring_callback_client import SpringCallbackClient
@@ -8,6 +9,7 @@ from app.core.exceptions import EmbeddingError, RepositoryError
 from app.repositories.album_embedding_repository import AlbumEmbeddingRepository
 from app.repositories.album_metadata_repository import AlbumMetadataRepository
 from app.repositories.user_listened_album_repository import UserListenedAlbumRepository
+from app.repositories.user_review_embedding_repository import UserReviewEmbeddingRepository
 from app.repositories.user_taste_metadata_repository import UserTasteMetadataRepository
 from app.schemas.recommendation import (
     AlbumCandidate,
@@ -54,10 +56,12 @@ class RecommendationService:
         self.candidate_pool_size = candidate_pool_size
 
     async def recommend_by_review(self, review_id: int, review_content: str, user_id: str) -> None:
-        
+        t_start = time.monotonic()
+
         # 감상문을 검색용 벡터로 변환한다
         try:
             embedding = await self.embedding_service.embed_review(review_content)
+            logger.debug("embedding done | review_id=%s | elapsed=%.3fs", review_id, time.monotonic() - t_start)
         except EmbeddingError:
             await self._send_failed_safely(
                 review_id,
@@ -90,10 +94,12 @@ class RecommendationService:
             )
 
         # 검색 벡터로 유사 앨범 후보를 조회한다
+        t_search = time.monotonic()
         try:
             candidates = await self.album_embedding_repository.find_similar_albums(
                 query_vector, self.candidate_pool_size
             )
+            logger.debug("pgvector search done | review_id=%s | elapsed=%.3fs", review_id, time.monotonic() - t_search)
         except RepositoryError:
             await self._send_failed_safely(
                 review_id,
@@ -110,8 +116,10 @@ class RecommendationService:
             )
             return
 
+        t_rerank = time.monotonic()
         try:
             candidates = self._rerank_candidates(user_id, list(candidates))
+            logger.debug("rerank done | review_id=%s | elapsed=%.3fs", review_id, time.monotonic() - t_rerank)
         except RepositoryError:
             await self._send_failed_safely(
                 review_id,
@@ -121,10 +129,12 @@ class RecommendationService:
             return
 
         # 후보 앨범별 추천 사유를 생성한다
+        t_reason = time.monotonic()
         try:
             reasons = await self.recommendation_reason_service.generate_reasons(
                 review_content, candidates
             )
+            logger.debug("reason generation done | review_id=%s | elapsed=%.3fs", review_id, time.monotonic() - t_reason)
         except Exception as exc:
             logger.exception("Recommendation reason generation failed: %s", exc)
             await self._send_failed_safely(
@@ -136,11 +146,14 @@ class RecommendationService:
 
         recommendations = self._build_callback_items(candidates, reasons)
 
-        # 완료 결과는 Spring Boot 콜백 API로 전달한다
+        # 완료 결과와 감상문 embedding을 Spring Boot 콜백 API로 전달한다.
+        # embedding은 best-effort로 포함하며, Spring 측 저장 실패 시 추천 결과에 영향 없다.
+        logger.debug("processing done, sending callback | review_id=%s | total_elapsed=%.3fs", review_id, time.monotonic() - t_start)
         try:
             await self.spring_callback_client.send_completed_result(
                 review_id, recommendations, embedding
             )
+            logger.debug("callback done | review_id=%s | total_elapsed=%.3fs", review_id, time.monotonic() - t_start)
         except Exception as exc:
             logger.exception("Spring callback failed: %s", exc)
 
