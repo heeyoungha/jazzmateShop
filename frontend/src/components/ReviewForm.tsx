@@ -78,6 +78,7 @@ export function ReviewForm({ onSubmit, submitting, error }: ReviewFormProps) {
       setSearchStatus("idle");
       return;
     }
+    if (selectedGid) return;
     debounceRef.current = setTimeout(async () => {
       try {
         const params = new URLSearchParams({ albumName, artistName });
@@ -96,7 +97,7 @@ export function ReviewForm({ onSubmit, submitting, error }: ReviewFormProps) {
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [albumName, artistName]);
+  }, [albumName, artistName, selectedGid]);
 
   function handleSelectCandidate(candidate: MusicBrainzAlbumCandidate) {
     setAlbumName(candidate.name);
