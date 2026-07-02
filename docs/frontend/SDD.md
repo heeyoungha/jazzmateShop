@@ -28,11 +28,11 @@
 
 | 페이지 | 포함 플로우 | 전체 플로우 | 프론트 구현 상세 |
 |--------|-------------|------------|-----------------|
-| `WriteReviewPage` | 감상문 작성, 저장 후 추천 페이지 이동 | [flows/01-write-review.md](../flows/01-write-review.md) | [flows/01-write-review.md](./flows/01-write-review.md) |
-| `ReviewBasedRecommendPage` | polling 상태 조회, 추천 결과 렌더링, 재시도 | [flows/02-recommend.md](../flows/02-recommend.md) | [flows/02-recommend.md](./flows/02-recommend.md) |
-| `MyReviewsPage` | 공개 감상문 목록 조회 | [flows/03-my-reviews.md](../flows/03-my-reviews.md) | [flows/03-my-reviews.md](./flows/03-my-reviews.md) |
-| `CriticsReviewPage` | 전문가 리뷰 목록 조회 | [flows/04-critics-review.md](../flows/04-critics-review.md) | [flows/04-critics-review.md](./flows/04-critics-review.md) |
-| `CriticsReviewDetailPage` | 전문가 리뷰 상세 조회 | [flows/04-critics-review.md](../flows/04-critics-review.md) | [flows/04-critics-review.md](./flows/04-critics-review.md) |
+| `WriteReviewPage` | 감상문 작성, 저장 후 추천 페이지 이동 | [flows/01-write-review.md](../flows/01-write-review.md) | [Flow Diagram](../flow-diagram.html) / [MD](./flows/01-write-review.md) |
+| `ReviewBasedRecommendPage` | polling 상태 조회, 추천 결과 렌더링, 재시도 | [flows/02-recommend.md](../flows/02-recommend.md) | [Flow Diagram](../flow-diagram.html) / [MD](./flows/02-recommend.md) |
+| `MyReviewsPage` | 공개 감상문 목록 조회 | [flows/03-my-reviews.md](../flows/03-my-reviews.md) | [Flow Diagram](../flow-diagram.html) / [MD](./flows/03-my-reviews.md) |
+| `CriticsReviewPage` | 전문가 리뷰 목록 조회 | [flows/04-critics-review.md](../flows/04-critics-review.md) | [Flow Diagram](../flow-diagram.html) / [MD](./flows/04-critics-review.md) |
+| `CriticsReviewDetailPage` | 전문가 리뷰 상세 조회 | [flows/04-critics-review.md](../flows/04-critics-review.md) | [Flow Diagram](../flow-diagram.html) / [MD](./flows/04-critics-review.md) |
 
 ---
 
@@ -41,7 +41,8 @@
 | 문서 | 역할 |
 |------|------|
 | [docs/SDD.md](../SDD.md) | 공통 시스템 설계 기준 |
-| [docs/API_SPEC.md](../API_SPEC.md) | 프론트가 호출하는 API 계약 |
+| [docs/API_SPEC.md](../API_SPEC.md) | 프론트가 호출하는 API 계약. Swagger/OpenAPI 전환 전까지 보조 계약 문서로 유지 |
+| [docs/flow-diagram.html](../flow-diagram.html) | 플로우별 PlantUML 다이어그램과 Swagger API 참조를 통합 제공 |
 | [flows/](./flows/) | 플로우별 프론트엔드 구현 상세 |
 | [ADR-FE001](./adr/001-state-and-api-response.md) | 상태 소유와 API 응답 처리 결정 |
 | [ADR-FE002](./adr/002-recommendation-polling-ui.md) | 추천 상태 polling UI 결정 |

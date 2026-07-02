@@ -8,9 +8,9 @@
 - `user_id`는 필수값이다. 누락 시 422를 반환한다.
 
 **취향 벡터 생성**
-- `user_id`가 있으면 `user_reviews.mb_album_gid`로 감상한 앨범 임베딩을 조회해 취향 벡터를 생성한다.
-- 취향 벡터 = 감상문 임베딩 × 0.6 + 감상 앨범 임베딩 평균 × 0.4
-- 감상한 앨범이 없으면 감상문 임베딩 100%로 검색한다 (폴백).
+- `user_id`가 있으면 과거 감상문 임베딩(`user_reviews.review_embedding`)과 감상 앨범 임베딩(`user_reviews.mb_album_gid` → `album_reference.embedding`)을 합산해 개인화 임베딩 목록을 구성한다.
+- 취향 벡터 = 감상문 임베딩 × 0.6 + 개인화 임베딩 평균 × 0.4 (과거 감상문 embedding + 앨범 embedding 모두 포함)
+- 개인화 임베딩이 없으면 감상문 임베딩 100%로 검색한다 (폴백).
 
 **유사도 검색**
 - 유사도 검색 대상은 `album_reference`로 고정한다.
@@ -29,6 +29,7 @@
 
 **Spring 콜백**
 - FastAPI는 `user_reviews`, `recommend_album`을 직접 수정하지 않는다. 추천 결과 저장과 상태 전이는 Spring Boot 콜백에 위임한다.
+- 완료 콜백 시 추천 결과와 함께 감상문 embedding을 전달한다. embedding은 best-effort로 포함하며, Spring 측 저장 실패 시 추천 결과에 영향 없다.
 - Spring 콜백 전송 실패 시 재시도 정책은 별도 결정 전까지 로그만 기록한다.
 
 **인프라**
@@ -41,6 +42,7 @@
 @startuml
 participant "RecommendationService" as RS
 participant "EmbeddingService" as ES
+participant "UserReviewEmbeddingRepository" as URER
 participant "UserListenedAlbumRepository" as RAR
 participant "TasteVectorService" as TV
 participant "SimilaritySearch" as AER
@@ -57,26 +59,38 @@ note right of ES
 end note
 ES --> RS : review_embedding
 
+RS -> URER : find_by_user_id(user_id)
+note right of URER
+  user_id로 user_reviews.review_embedding 조회
+  (과거 감상문 임베딩 목록 반환)
+end note
+URER --> RS : previous_review_embeddings
+
 RS -> RAR : find_by_user_id(user_id)
 note right of RAR
-  user_id로 user_reviews 조회
-  mb_album_gid가 있는 기존 감상 앨범을 찾고
+  user_id로 user_reviews.mb_album_gid 조회
   album_reference.embedding으로 연결되는 벡터만 반환
+  (감상 앨범 임베딩 목록 반환)
 end note
-RAR --> RS : reviewed_album_embeddings
+RAR --> RS : listened_album_embeddings
 
-alt #LightGreen 감상 앨범 있음
-  RS -> TV : build_query_vector(review_embedding, reviewed_album_embeddings)
+alt #Pink 감상 이력 조회 실패
+  RS -> CC : send_failed_result(SEARCH_FAILED)
+end
+
+alt #LightGreen 개인화 임베딩 있음 (과거 감상문 또는 앨범 embedding)
+  RS -> TV : build_query_vector(review_embedding, previous_review_embeddings + listened_album_embeddings)
   note right of TV
     신규 감상문 embedding 60%
-    기존 감상 앨범 평균 embedding 40%
+    과거 감상문 + 앨범 embedding 평균 40%
     비율로 검색 벡터 생성
   end note
   TV --> RS : query_vector (60% + 40% 블렌딩)
-else #LightYellow 감상 앨범 없음 (폴백)
+else #LightYellow 개인화 임베딩 없음 (폴백)
   note over RS
-    사용자가 선택한 앨범이 album_reference에 없거나
-    embedding이 없으면 review_embedding만 사용
+    과거 감상문 embedding도 없고
+    앨범 embedding 연결도 없으면
+    review_embedding만 사용
   end note
   RS -> RS : query_vector = review_embedding
 end
@@ -121,7 +135,7 @@ else #LightGreen 후보 있음
     추천 사유 생성
   end note
   RRS --> RS : reasons[]
-  RS -> CC : send_completed_result(review_id, recommendations[])
+  RS -> CC : send_completed_result(review_id, recommendations[], embedding)
 end
 @enduml
 ```
@@ -131,8 +145,10 @@ end
 | 단계 | 구성요소 | 역할 | 입력 | 출력 | DB/API |
 |------|----------|------|------|------|--------|
 | 1 | `embedding_service` | 감상문 임베딩 생성 | review_content | embedding vector | OpenAI Python SDK Embeddings API |
-| 2 | `user_listened_album_repository` | 사용자 감상 앨범 임베딩 조회 | user_id | embedding[] | user_reviews → album_reference SELECT |
-| 3 | `taste_vector_service` | 감상문 + 취향 벡터 블렌딩 | review_embedding, reviewed_album_embeddings | query_vector | - |
+| 2 | `user_review_embedding_repository` | 사용자 과거 감상문 임베딩 조회 | user_id | review_embedding[] | user_reviews SELECT |
+| 2-2 | `user_listened_album_repository` | 사용자 감상 앨범 임베딩 조회 | user_id | embedding[] | user_reviews → album_reference SELECT |
+| 2 실패 시 | — | 감상 이력 조회 실패 시 SEARCH_FAILED 콜백 후 종료 | — | — | — |
+| 3 | `taste_vector_service` | 감상문 + 개인화 임베딩 블렌딩 | review_embedding, (previous_review_embeddings + listened_album_embeddings) | query_vector | - |
 | 4 | `similarity_search` | `album_reference` 유사도 검색 | query_vector | 후보 pool | match_albums() RPC |
 | 5 | `user_taste_metadata_repository` | 사용자 기존 감상 이력 메타 조회 | user_id | AlbumMetadata[] | user_reviews → mb_album SELECT |
 | 6 | `album_metadata_repository` | 후보 앨범 메타 조회 | album_reference id[] | album_id별 AlbumMetadata | album_reference → mb_album SELECT |
@@ -169,6 +185,7 @@ end
 | 콜백 score는 0.0000~1.0000 범위로 정규화 |
 | 후보 0건이면 추천 사유 생성 없이 FAILED 콜백 전송 |
 | 임베딩 실패 시 검색/LLM을 호출하지 않고 FAILED 콜백 전송 |
+| 감상 이력 조회 실패 시 검색/LLM을 호출하지 않고 FAILED 콜백 전송 |
 | 유사도 검색 실패 시 LLM을 호출하지 않고 FAILED 콜백 전송 |
 | 콜백 전송 실패는 자동 재시도나 예외 전파 없이 로그만 기록 |
 | user_id가 있고 매칭 앨범이 있으면 TasteVectorService로 블렌딩된 벡터로 검색 |

@@ -3,11 +3,13 @@ package shop.jazzmate.jazzmateshop.criticsReview;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.web.bind.annotation.*;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import shop.jazzmate.jazzmateshop.criticsReview.dto.CriticsReviewResponse;
 import shop.jazzmate.jazzmateshop.criticsReview.dto.CriticsReviewSummaryResponse;
 
 import java.util.UUID;
 
+@Tag(name = "critics", description = "전문가 리뷰 목록 / 상세 조회")
 @RestController
 @RequestMapping("/api/critics")
 @RequiredArgsConstructor

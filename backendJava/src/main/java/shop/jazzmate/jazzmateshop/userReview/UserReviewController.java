@@ -5,6 +5,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import shop.jazzmate.jazzmateshop.common.constant.ApiMessages;
 import shop.jazzmate.jazzmateshop.common.dto.ApiResponse;
 import shop.jazzmate.jazzmateshop.userReview.dto.UserReviewCreateResponse;
@@ -12,6 +13,7 @@ import shop.jazzmate.jazzmateshop.userReview.dto.UserReviewRequest;
 import shop.jazzmate.jazzmateshop.userReview.dto.UserReviewResponse;
 import shop.jazzmate.jazzmateshop.userReview.dto.UserReviewSummaryResponse;
 
+@Tag(name = "user-reviews", description = "감상문 작성 / 조회 / 추천 재시도")
 @RestController
 @RequestMapping("/api/user-reviews")
 @RequiredArgsConstructor
