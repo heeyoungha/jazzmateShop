@@ -31,8 +31,11 @@ function parseSummary(raw: string): ParsedSummary | null {
   try {
     const p = JSON.parse(raw);
     // track_info는 { korean: { 트랙명: "설명" }, english: {...} } 구조
+    const trackRaw = p.categories?.track_info?.korean ?? {};
     const trackInfoKorean: Record<string, string> =
-      p.categories?.track_info?.korean ?? {};
+      typeof trackRaw.track_name === "object" && trackRaw.track_name !== null
+        ? trackRaw.track_name
+        : trackRaw;
     return {
       summary: p.summary?.korean ?? "",
       artistInfo: p.categories?.artist_info?.korean ?? "",

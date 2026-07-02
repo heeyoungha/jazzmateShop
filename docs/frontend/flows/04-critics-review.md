@@ -54,6 +54,10 @@
 |----------|--------|-------------|---------------|
 | 성공 경로 (목록 조회 → 상세 조회) | 카드 클릭 후 상세 페이지 표시 | E2E | `criticsReview_listAndOpenDetail` |
 
+## 트러블슈팅
+
+- [[2026-07-02] 특정 앨범 상세 페이지 빈 화면](../../../docs/troubleshooting/frontend-critics-review-blank-page.md)
+
 ## 관련 API
 
 - [API_SPEC.md — GET /api/critics](../../API_SPEC.md#get-apicritics)
