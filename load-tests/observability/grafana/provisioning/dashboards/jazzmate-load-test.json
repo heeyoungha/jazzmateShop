@@ -179,13 +179,71 @@
       "type": "timeseries",
       "gridPos": { "x": 12, "y": 40, "w": 12, "h": 8 },
       "fieldConfig": {
+        "defaults": { "unit": "ms" }
+      },
+      "targets": [
+        {
+          "datasource": "Prometheus",
+          "expr": "k6_time_to_completed_p95",
+          "legendFormat": "time_to_completed p95"
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "title": "FastAPI Stage Latency p95",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 48, "w": 12, "h": 8 },
+      "fieldConfig": {
         "defaults": { "unit": "s" }
       },
       "targets": [
         {
           "datasource": "Prometheus",
-          "expr": "k6_time_to_completed_p99",
-          "legendFormat": "time_to_completed p99"
+          "expr": "histogram_quantile(0.95, sum(rate(jazzmate_recommendation_stage_duration_seconds_bucket{job=\"ai-api\", status=\"success\", stage!=\"total\"}[1m])) by (le, stage))",
+          "legendFormat": "{{stage}} p95"
+        }
+      ]
+    },
+    {
+      "id": 14,
+      "title": "FastAPI Total Latency p95",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 48, "w": 12, "h": 8 },
+      "fieldConfig": {
+        "defaults": { "unit": "s" }
+      },
+      "targets": [
+        {
+          "datasource": "Prometheus",
+          "expr": "histogram_quantile(0.95, sum(rate(jazzmate_recommendation_stage_duration_seconds_bucket{job=\"ai-api\", stage=\"total\"}[1m])) by (le, status))",
+          "legendFormat": "total {{status}} p95"
+        }
+      ]
+    },
+    {
+      "id": 15,
+      "title": "FastAPI In-Flight Recommendations",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 56, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "datasource": "Prometheus",
+          "expr": "jazzmate_recommendation_in_flight{job=\"ai-api\"}",
+          "legendFormat": "in_flight"
+        }
+      ]
+    },
+    {
+      "id": 16,
+      "title": "FastAPI Recommendation Result Rate",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 56, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "datasource": "Prometheus",
+          "expr": "sum(rate(jazzmate_recommendation_requests_total{job=\"ai-api\"}[1m])) by (status)",
+          "legendFormat": "{{status}}"
         }
       ]
     }

@@ -1,6 +1,6 @@
 services:
   e2e-db:
-    image: postgres:16-alpine
+    image: pgvector/pgvector:pg16
     command:
       - "postgres"
       - "-c"
@@ -9,6 +9,8 @@ services:
       - "log_lock_waits=on"
       - "-c"
       - "deadlock_timeout=200ms"
+      - "-c"
+      - "max_connections=500"
     environment:
       POSTGRES_DB: jazzmate_e2e_loadtest
       POSTGRES_USER: jazzmate
