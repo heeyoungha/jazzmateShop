@@ -19,3 +19,7 @@ temp
 frontend/node_modules
 frontend/coverage
 frontend/dist/
+data/
+
+# load test results
+load-tests/results/

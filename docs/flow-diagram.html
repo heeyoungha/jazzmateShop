@@ -125,6 +125,8 @@
       letter-spacing: 0.04em;
     }
     pre.plantuml { display: none; }
+    .pipeline-task-detail { display: none; }
+    .pipeline-task-detail.active { display: block; }
 
     .swagger-side {
       position: sticky;
@@ -225,6 +227,7 @@
     <button class="tab" data-tab="flow02">플로우 02 · AI 추천 처리</button>
     <button class="tab" data-tab="flow03">플로우 03 · 내 감상문 목록</button>
     <button class="tab" data-tab="flow04">플로우 04 · 전문가 리뷰</button>
+    <button class="tab" data-tab="flow05">플로우 05 · 파이프라인</button>
   </div>
 
   <!-- ── 플로우 01 ── -->
@@ -345,6 +348,14 @@ OAI --> FA : reasons[]
 FA -> SP : POST /api/user-reviews/{id}/recommendations\n{status: COMPLETED, recommendations[], embedding}
 SP -> DB : INSERT recommend_album\nUPDATE recommendationStatus → COMPLETED
 
+== ReviewEmbeddingSaveEvent (AFTER_COMMIT, @Async) ==
+SP -> SP : ReviewEmbeddingSaveEvent 발행
+SP -> DB : UPDATE user_reviews\n(review_embedding 저장)
+note right of DB
+  best-effort: 실패해도
+  추천 결과에 영향 없음
+end note
+
 == polling ==
 loop polling (3초 간격)
   FE -> SP : GET /api/user-reviews/{id}
@@ -426,7 +437,7 @@ note over FE : polling 재개
       <thead><tr><th>상태</th><th>프론트 동작</th><th>Spring Boot 동작</th></tr></thead>
       <tbody>
         <tr><td><code>PENDING</code></td><td>대기 UI + polling 유지 (3초 간격)</td><td>FastAPI 추천 요청 전송 완료</td></tr>
-        <tr><td><code>COMPLETED</code></td><td>recommendations[] 카드 렌더링 + polling 중단</td><td>recommend_album 저장 완료</td></tr>
+        <tr><td><code>COMPLETED</code></td><td>recommendations[] 카드 렌더링 + polling 중단</td><td>recommend_album 저장 완료 + 커밋 후 review_embedding 비동기 저장 (best-effort)</td></tr>
         <tr><td><code>FAILED</code></td><td>에러 메시지 + retry 버튼 + polling 중단</td><td>FastAPI FAILED 콜백 수신</td></tr>
       </tbody>
     </table>
@@ -600,6 +611,353 @@ end
       </tbody>
     </table>
   </div>
+
+  <!-- ── 플로우 05 ── -->
+  <div class="panel" data-panel="flow05">
+    <h2>플로우 05 — AllAboutJazz 데이터 파이프라인</h2>
+    <p>Airflow 3-DAG 파이프라인이 AllAboutJazz 리뷰를 수집하고, OpenAI Batch API로 요약/임베딩을 생성한 뒤 PostgreSQL에 저장한다.</p>
+
+    <!-- ── DAG 1 ── -->
+    <h3 style="margin:24px 0 8px;">DAG 1 — URL 수집 · 크롤링 · GPT Batch 제출</h3>
+    <div class="flow-workspace">
+      <div class="diagram-column">
+        <div class="endpoint-tabs" role="tablist" data-dag="dag1">
+          <button class="endpoint-tab active" data-pipeline-task="dag1-check">check_pending_batch</button>
+          <button class="endpoint-tab" data-pipeline-task="dag1-create">create_batch</button>
+          <button class="endpoint-tab" data-pipeline-task="dag1-collect">collect_and_register_urls</button>
+          <button class="endpoint-tab" data-pipeline-task="dag1-crawl">crawl_details</button>
+          <button class="endpoint-tab" data-pipeline-task="dag1-gpt">submit_gpt_batch</button>
+        </div>
+        <div class="diagram-wrap" style="margin-top:0">
+          <div class="diagram-label">DAG 1 시퀀스</div>
+          <pre class="plantuml">
+@startuml
+skinparam backgroundColor #FAFAFA
+skinparam sequenceArrowThickness 1.5
+skinparam participantFontSize 13
+
+participant "Airflow\nDAG 1" as DAG1
+participant "PostgreSQL" as DB
+participant "AllAboutJazz\n(Playwright)" as AAJ
+participant "OpenAI\nBatch API" as OAI
+participant "Slack" as SL
+participant "DAG 2" as DAG2
+
+DAG1 -> DAG1 : 수동 트리거
+
+== check_pending_batch ==
+DAG1 -> DB : SELECT pipeline_batches\n(status != completed)
+DAG1 -> DB : SELECT crawl_jobs\n(미완료 job 필터링)
+DB --> DAG1 : pending_batch / null
+
+alt 미완료 batch 존재 (resume)
+  DAG1 -> DAG1 : XCom에서 batch_id · job_ids 복원
+else 신규 batch
+  == create_batch ==
+  DAG1 -> DB : INSERT pipeline_batches
+  DB --> DAG1 : batch_num, batch_id
+
+  == collect_and_register_urls ==
+  DAG1 -> AAJ : URL 목록 수집 (Playwright)
+  AAJ --> DAG1 : review URL[]
+  DAG1 -> DB : UPSERT crawl_targets
+  DAG1 -> DB : INSERT crawl_jobs\n(status=pending)
+end
+
+== crawl_details ==
+DAG1 -> AAJ : 리뷰 상세 크롤링 (Playwright)
+AAJ --> DAG1 : HTML 콘텐츠
+DAG1 -> DB : INSERT allthatjazz_raw
+DAG1 -> DB : UPDATE crawl_jobs\n(status → success | failed)
+
+alt 성공률 < 80%
+  DAG1 -> SL : 알림 전송
+  DAG1 -> DAG1 : Task 실패
+else 성공률 >= 80%
+  == submit_gpt_batch ==
+  DAG1 -> DB : SELECT allthatjazz_raw\n(batch 기준 필터)
+  DB --> DAG1 : raw content[]
+  DAG1 -> OAI : file upload
+  OAI --> DAG1 : file_id
+  DAG1 -> OAI : batch create
+  OAI --> DAG1 : openai_batch_id
+  DAG1 -> DB : INSERT processing_jobs\n(stage=gpt, openai_batch_id)
+  DAG1 -> DAG2 : TriggerDagRunOperator\n{batch_id, openai_batch_id}
+end
+@enduml
+          </pre>
+        </div>
+      </div>
+      <aside class="swagger-side">
+        <div data-dag-panel="dag1">
+          <div class="pipeline-task-detail active" data-task-detail="dag1-check">
+            <p class="swagger-title" style="margin:0 0 10px">check_pending_batch</p>
+            <table>
+              <thead><tr><th>방향</th><th>테이블</th><th>필드</th></tr></thead>
+              <tbody>
+                <tr><td>READ</td><td><code>pipeline_batches</code></td><td><code>id</code>, <code>batch_num</code>, <code>status</code></td></tr>
+                <tr><td>READ</td><td><code>crawl_jobs</code></td><td><code>id</code>, <code>status</code>, <code>attempt_count</code> (미완료 job 필터링)</td></tr>
+                <tr><td>XCom push</td><td>—</td><td><code>pending_batch</code> → <code>batch_num</code>, <code>batch_id</code>, <code>job_ids</code>, <code>pending_count</code> (job_ids 길이, DB 컬럼 아님)</td></tr>
+              </tbody>
+            </table>
+            <p style="margin:10px 0 0;font-size:13px;color:#5f6b7a;">미완료 batch 존재 여부에 따라 <code>resume_pending_batch</code> 또는 <code>create_batch</code>로 분기한다. <code>pending_count</code>는 <code>pipeline_batches</code> 컬럼이 아니라 미크롤링 <code>crawl_jobs</code> 수를 계산한 임시값이다.</p>
+          </div>
+          <div class="pipeline-task-detail" data-task-detail="dag1-create">
+            <p class="swagger-title" style="margin:0 0 10px">create_batch</p>
+            <table>
+              <thead><tr><th>방향</th><th>테이블</th><th>필드</th></tr></thead>
+              <tbody>
+                <tr><td>INSERT</td><td><code>pipeline_batches</code></td><td><code>id</code>, <code>batch_num</code>, <code>airflow_dag_run_id</code>, <code>status</code></td></tr>
+              </tbody>
+            </table>
+            <p style="margin:10px 0 0;font-size:13px;color:#5f6b7a;">반환값: <code>{ batch_num, batch_id }</code> → XCom으로 다음 task에 전달</p>
+          </div>
+          <div class="pipeline-task-detail" data-task-detail="dag1-collect">
+            <p class="swagger-title" style="margin:0 0 10px">collect_and_register_urls</p>
+            <table>
+              <thead><tr><th>방향</th><th>테이블</th><th>필드</th></tr></thead>
+              <tbody>
+                <tr><td>READ</td><td>Airflow Variable</td><td><code>current_start_page</code></td></tr>
+                <tr><td>READ (외부)</td><td>AllAboutJazz</td><td>리뷰 URL 목록 (HTML 파싱)</td></tr>
+                <tr><td>UPSERT</td><td><code>crawl_targets</code></td><td><code>url</code>, <code>source</code></td></tr>
+                <tr><td>INSERT</td><td><code>crawl_jobs</code></td><td><code>batch_id</code>, <code>url</code>, <code>status='pending'</code></td></tr>
+                <tr><td>INSERT (실패시)</td><td><code>error_history</code></td><td><code>stage</code>, <code>batch_id</code>, <code>error_type</code>, <code>error_message</code>, <code>http_status_code</code></td></tr>
+              </tbody>
+            </table>
+            <p style="margin:10px 0 0;font-size:13px;color:#5f6b7a;">반환값: <code>{ batch_num, batch_id, url_count, end_page }</code></p>
+          </div>
+          <div class="pipeline-task-detail" data-task-detail="dag1-crawl">
+            <p class="swagger-title" style="margin:0 0 10px">crawl_details</p>
+            <table>
+              <thead><tr><th>방향</th><th>테이블</th><th>필드</th></tr></thead>
+              <tbody>
+                <tr><td>READ</td><td><code>crawl_jobs</code></td><td><code>id</code>, <code>batch_id</code>, <code>url</code>, <code>status='pending'</code></td></tr>
+                <tr><td>READ (외부)</td><td>AllAboutJazz</td><td>리뷰 상세 HTML (Playwright)</td></tr>
+                <tr><td>INSERT</td><td><code>allthatjazz_raw</code></td><td><code>crawl_job_id</code>, <code>content</code>, <code>metadata</code></td></tr>
+                <tr><td>UPDATE</td><td><code>crawl_jobs</code></td><td><code>status → 'success' | 'failed'</code></td></tr>
+                <tr><td>INSERT (실패시)</td><td><code>error_history</code></td><td><code>stage</code>, <code>batch_id</code>, <code>error_type</code>, <code>error_message</code></td></tr>
+              </tbody>
+            </table>
+            <p style="margin:10px 0 0;font-size:13px;color:#5f6b7a;">성공률 &lt; 80% 이면 Slack 알림 후 Task 실패. 반환값: <code>{ batch_num, batch_id, success_count, failed_count }</code></p>
+          </div>
+          <div class="pipeline-task-detail" data-task-detail="dag1-gpt">
+            <p class="swagger-title" style="margin:0 0 10px">submit_gpt_batch</p>
+            <table>
+              <thead><tr><th>방향</th><th>테이블</th><th>필드</th></tr></thead>
+              <tbody>
+                <tr><td>READ</td><td><code>allthatjazz_raw</code></td><td><code>id</code>, <code>content</code>, <code>crawl_job_id</code> (batch 기준 필터)</td></tr>
+                <tr><td>WRITE (외부)</td><td>OpenAI Batch API</td><td>file upload → <code>file_id</code>, batch create → <code>openai_batch_id</code></td></tr>
+                <tr><td>XCom push</td><td>—</td><td><code>openai_batch_result</code> → <code>openai_batch_id</code>, <code>file_id</code>, <code>item_count</code> (재시도 중복 방지용)</td></tr>
+                <tr><td>INSERT</td><td><code>processing_jobs</code></td><td><code>batch_id</code>, <code>stage='gpt'</code>, <code>openai_batch_id</code>, <code>item_count</code>, <code>file_id</code></td></tr>
+              </tbody>
+            </table>
+            <p style="margin:10px 0 0;font-size:13px;color:#5f6b7a;">재시도 시 XCom에 <code>openai_batch_id</code>가 있으면 OpenAI 재요청 없이 DB INSERT만 재시도. 완료 후 DAG 2 트리거.</p>
+          </div>
+        </div>
+      </aside>
+    </div>
+
+    <!-- ── DAG 2 ── -->
+    <h3 style="margin:36px 0 8px;">DAG 2 — GPT 결과 처리 · Embedding Batch 제출</h3>
+    <div class="flow-workspace">
+      <div class="diagram-column">
+        <div class="endpoint-tabs" role="tablist" data-dag="dag2">
+          <button class="endpoint-tab active" data-pipeline-task="dag2-wait">wait_for_gpt_completion</button>
+          <button class="endpoint-tab" data-pipeline-task="dag2-process">process_gpt_result</button>
+          <button class="endpoint-tab" data-pipeline-task="dag2-embed">submit_embedding_batch</button>
+        </div>
+        <div class="diagram-wrap" style="margin-top:0">
+          <div class="diagram-label">DAG 2 시퀀스</div>
+          <pre class="plantuml">
+@startuml
+skinparam backgroundColor #FAFAFA
+skinparam sequenceArrowThickness 1.5
+skinparam participantFontSize 13
+
+participant "DAG 1" as DAG1
+participant "DAG 2\n2_summary_dag" as DAG2
+participant "OpenAI\nBatch API" as OAI
+participant "PostgreSQL" as DB
+participant "DAG 3" as DAG3
+
+DAG1 -> DAG2 : TriggerDagRunOperator\n{batch_id, openai_batch_id}
+
+loop Sensor (reschedule · 5분 간격 · 24h timeout)
+  DAG2 -> OAI : GPT batch 상태 조회
+  OAI --> DAG2 : status, request_counts
+  DAG2 -> DB : UPDATE processing_jobs\n(openai_status, processed_count,\nsuccess_rate, last_check_time)
+  alt completed
+    DAG2 -> DAG2 : success | partial_success | failed 세분화\n(성공률 < 80% → failed)
+  else in_progress / validating
+    DAG2 -> DAG2 : 대기 (reschedule)
+  end
+end
+
+DAG2 -> OAI : output file download
+DAG2 -> DB : INSERT processed_summary\n(raw_id, summary_text, metadata)
+DAG2 -> DB : UPDATE processing_jobs\n(parsing_status=done, parsing_count,\nparsed_at)
+DAG2 -> DB : INSERT api_usage_logs\n(stage=gpt, prompt_tokens,\ncompletion_tokens)
+
+DAG2 -> OAI : Embedding Batch 제출\n(file upload → batch create)
+DAG2 -> DB : INSERT processing_jobs\n(stage=embedding, openai_batch_id)
+DAG2 -> DAG3 : TriggerDagRunOperator\n{batch_id, openai_batch_id}
+@enduml
+          </pre>
+        </div>
+      </div>
+      <aside class="swagger-side">
+        <div data-dag-panel="dag2">
+          <div class="pipeline-task-detail active" data-task-detail="dag2-wait">
+            <p class="swagger-title" style="margin:0 0 4px">wait_for_gpt_completion</p>
+            <p style="margin:0 0 10px;font-size:12px;color:#5f6b7a;">Sensor · reschedule · 5분 간격 · 24h timeout</p>
+            <table>
+              <thead><tr><th>방향</th><th>테이블</th><th>필드</th></tr></thead>
+              <tbody>
+                <tr><td>READ</td><td><code>processing_jobs</code></td><td><code>openai_batch_id</code>, <code>stage='gpt'</code>, <code>openai_status</code> (config 없을 때 DB 조회)</td></tr>
+                <tr><td>READ (외부)</td><td>OpenAI Batch API</td><td>batch 상태 → <code>status</code>, <code>request_counts</code>, <code>output_file_id</code></td></tr>
+                <tr><td>UPDATE</td><td><code>processing_jobs</code></td><td><code>openai_status</code>, <code>processed_count</code>, <code>failed_count</code>, <code>success_rate</code>, <code>last_check_time</code>, <code>output_file_id</code></td></tr>
+              </tbody>
+            </table>
+            <p style="margin:10px 0 0;font-size:13px;color:#5f6b7a;"><code>in_progress → running</code> / <code>completed → success | partial_success | failed</code> 세분화. 성공률 &lt; 80% 또는 완전 실패도 <code>True</code> 반환해 다음 단계를 진행한다.</p>
+          </div>
+          <div class="pipeline-task-detail" data-task-detail="dag2-process">
+            <p class="swagger-title" style="margin:0 0 10px">process_gpt_result</p>
+            <table>
+              <thead><tr><th>방향</th><th>테이블</th><th>필드</th></tr></thead>
+              <tbody>
+                <tr><td>READ</td><td><code>processing_jobs</code></td><td><code>openai_batch_id</code>, <code>batch_id</code>, <code>openai_status</code></td></tr>
+                <tr><td>READ</td><td><code>pipeline_batches</code></td><td><code>batch_num</code> (batch_id FK로 조회)</td></tr>
+                <tr><td>READ (외부)</td><td>OpenAI Batch API</td><td>output file download → GPT 응답 JSONL</td></tr>
+                <tr><td>INSERT</td><td><code>processed_summary</code></td><td><code>raw_id</code>, <code>summary_text</code>, <code>metadata</code></td></tr>
+                <tr><td>UPDATE</td><td><code>processing_jobs</code></td><td><code>parsing_status → 'running'|'done'|'failed'</code>, <code>parsing_count</code>, <code>parsing_failed</code>, <code>parsed_at</code></td></tr>
+                <tr><td>INSERT</td><td><code>api_usage_logs</code></td><td><code>stage='gpt'</code>, <code>model</code>, <code>prompt_tokens</code>, <code>completion_tokens</code></td></tr>
+                <tr><td>INSERT (실패시)</td><td><code>error_history</code></td><td><code>stage</code>, <code>error_type</code>, <code>error_message</code></td></tr>
+              </tbody>
+            </table>
+            <p style="margin:10px 0 0;font-size:13px;color:#5f6b7a;">반환값: <code>{ batch_num, success_count, error_count }</code></p>
+          </div>
+          <div class="pipeline-task-detail" data-task-detail="dag2-embed">
+            <p class="swagger-title" style="margin:0 0 10px">submit_embedding_batch</p>
+            <table>
+              <thead><tr><th>방향</th><th>테이블</th><th>필드</th></tr></thead>
+              <tbody>
+                <tr><td>READ</td><td><code>pipeline_batches</code></td><td><code>id</code> (batch_num으로 조회)</td></tr>
+                <tr><td>READ</td><td><code>crawl_jobs</code></td><td><code>id</code> (batch_id로 조회)</td></tr>
+                <tr><td>READ</td><td><code>allthatjazz_raw</code></td><td><code>id</code> (crawl_job_id로 조회)</td></tr>
+                <tr><td>READ</td><td><code>processed_summary</code></td><td><code>id</code>, <code>raw_id</code>, <code>summary_text</code></td></tr>
+                <tr><td>WRITE (외부)</td><td>OpenAI Batch API</td><td>embedding file upload → <code>file_id</code>, batch create → <code>openai_batch_id</code></td></tr>
+                <tr><td>INSERT</td><td><code>processing_jobs</code></td><td><code>batch_id</code>, <code>stage='embedding'</code>, <code>openai_batch_id</code>, <code>item_count</code>, <code>file_id</code></td></tr>
+              </tbody>
+            </table>
+            <p style="margin:10px 0 0;font-size:13px;color:#5f6b7a;">반환값: <code>{ batch_num, batch_id (openai_batch_id), item_count }</code> → DAG 3 트리거</p>
+          </div>
+        </div>
+      </aside>
+    </div>
+
+    <!-- ── DAG 3 ── -->
+    <h3 style="margin:36px 0 8px;">DAG 3 — Embedding 결과 처리 · pgvector 저장</h3>
+    <div class="flow-workspace">
+      <div class="diagram-column">
+        <div class="endpoint-tabs" role="tablist" data-dag="dag3">
+          <button class="endpoint-tab active" data-pipeline-task="dag3-wait">wait_for_embedding_completion</button>
+          <button class="endpoint-tab" data-pipeline-task="dag3-process">process_embedding_result</button>
+        </div>
+        <div class="diagram-wrap" style="margin-top:0">
+          <div class="diagram-label">DAG 3 시퀀스</div>
+          <pre class="plantuml">
+@startuml
+skinparam backgroundColor #FAFAFA
+skinparam sequenceArrowThickness 1.5
+skinparam participantFontSize 13
+
+participant "DAG 2" as DAG2
+participant "DAG 3\n3_embedding_vector_dag" as DAG3
+participant "OpenAI\nBatch API" as OAI
+participant "PostgreSQL" as DB
+participant "Slack" as SL
+participant "FastAPI\nRecommendation" as FA
+
+DAG2 -> DAG3 : TriggerDagRunOperator\n{batch_id, openai_batch_id}
+
+loop Sensor (reschedule · 5분 간격 · 24h timeout)
+  DAG3 -> OAI : Embedding batch 상태 조회
+  OAI --> DAG3 : status, request_counts
+  DAG3 -> DB : UPDATE processing_jobs\n(openai_status, processed_count,\nsuccess_rate, last_check_time)
+  alt completed
+    DAG3 -> DAG3 : success | partial_success | failed 세분화\n(성공률 < 80% → failed)
+  else in_progress
+    DAG3 -> DAG3 : 대기 (reschedule)
+  end
+end
+
+DAG3 -> OAI : output file download
+DAG3 -> DAG3 : parse embedding JSONL\n(processed_id, raw_id, embedding[])
+
+loop 각 embedding item
+  DAG3 -> DB : UPSERT embedding_vectors\n(raw_id, processed_id, vector_id,\ndim, embedding, model_id)
+end
+
+DAG3 -> DB : UPDATE processing_jobs\n(parsing_status=done, parsing_count,\nparsed_at)
+DAG3 -> DB : INSERT api_usage_logs\n(stage=embedding, prompt_tokens)
+DAG3 -> SL : 완료/실패 알림
+
+note over FA
+  추천 요청 시
+  embedding_vectors에서
+  match_albums() 검색
+end note
+@enduml
+          </pre>
+        </div>
+      </div>
+      <aside class="swagger-side">
+        <div data-dag-panel="dag3">
+          <div class="pipeline-task-detail active" data-task-detail="dag3-wait">
+            <p class="swagger-title" style="margin:0 0 4px">wait_for_embedding_completion</p>
+            <p style="margin:0 0 10px;font-size:12px;color:#5f6b7a;">Sensor · reschedule · 5분 간격 · 24h timeout</p>
+            <table>
+              <thead><tr><th>방향</th><th>테이블</th><th>필드</th></tr></thead>
+              <tbody>
+                <tr><td>READ</td><td><code>processing_jobs</code></td><td><code>openai_batch_id</code>, <code>stage='embedding'</code>, <code>openai_status</code> (config 없을 때 DB 조회)</td></tr>
+                <tr><td>READ (외부)</td><td>OpenAI Batch API</td><td>batch 상태 → <code>status</code>, <code>request_counts</code>, <code>output_file_id</code></td></tr>
+                <tr><td>UPDATE</td><td><code>processing_jobs</code></td><td><code>openai_status</code>, <code>processed_count</code>, <code>failed_count</code>, <code>success_rate</code>, <code>last_check_time</code>, <code>output_file_id</code></td></tr>
+              </tbody>
+            </table>
+            <p style="margin:10px 0 0;font-size:13px;color:#5f6b7a;"><code>completed → success | partial_success | failed</code> 세분화. 성공률 &lt; 80% 시 <code>failed</code>로 기록.</p>
+          </div>
+          <div class="pipeline-task-detail" data-task-detail="dag3-process">
+            <p class="swagger-title" style="margin:0 0 10px">process_embedding_result</p>
+            <table>
+              <thead><tr><th>방향</th><th>테이블</th><th>필드</th></tr></thead>
+              <tbody>
+                <tr><td>READ</td><td><code>processing_jobs</code></td><td><code>openai_batch_id</code>, <code>batch_id</code>, <code>openai_status</code></td></tr>
+                <tr><td>READ</td><td><code>pipeline_batches</code></td><td><code>batch_num</code> (batch_id FK로 조회)</td></tr>
+                <tr><td>READ (외부)</td><td>OpenAI Batch API</td><td>output file download → embedding JSONL (<code>processed_id</code>, <code>raw_id</code>, <code>embedding[]</code>)</td></tr>
+                <tr><td>UPSERT</td><td><code>embedding_vectors</code></td><td><code>raw_id</code>, <code>processed_id</code>, <code>vector_id</code>, <code>dim</code>, <code>embedding</code>, <code>model_id</code></td></tr>
+                <tr><td>READ</td><td><code>ai_models</code></td><td><code>model_id</code> (<code>text-embedding-3-small</code> 참조)</td></tr>
+                <tr><td>UPDATE</td><td><code>processing_jobs</code></td><td><code>parsing_status → 'running'|'done'|'failed'</code>, <code>parsing_count</code>, <code>parsing_failed</code>, <code>parsed_at</code></td></tr>
+                <tr><td>INSERT</td><td><code>api_usage_logs</code></td><td><code>stage='embedding'</code>, <code>model</code>, <code>prompt_tokens</code></td></tr>
+              </tbody>
+            </table>
+            <p style="margin:10px 0 0;font-size:13px;color:#5f6b7a;">반환값: <code>{ batch_num, success_count, failed_count }</code>. 저장된 <code>embedding_vectors</code>가 FastAPI <code>match_albums()</code>의 검색 입력이 된다.</p>
+          </div>
+        </div>
+      </aside>
+    </div>
+
+    <table>
+      <thead><tr><th>구성요소</th><th>역할</th><th>핵심 계약</th></tr></thead>
+      <tbody>
+        <tr><td>Airflow DAG 1</td><td>URL 수집, Playwright 크롤링, GPT Batch 제출</td><td><code>pipeline_batches</code> 기준으로 실행 단위를 만들고 <code>crawl_jobs</code> 상태를 갱신</td></tr>
+        <tr><td>Airflow DAG 2</td><td>GPT Batch 결과 대기/처리, Embedding Batch 제출</td><td>Sensor는 <code>reschedule</code> 모드로 대기하고 결과는 <code>processed_summary</code>에 저장</td></tr>
+        <tr><td>Airflow DAG 3</td><td>Embedding Batch 결과 대기/저장</td><td><code>embedding_vectors</code>를 upsert하고 추천 서비스가 조회할 벡터 데이터를 완성</td></tr>
+        <tr><td>PostgreSQL</td><td>상태와 결과의 single source of truth</td><td>큰 payload는 XCom이 아니라 DB에 저장, DAG 간 전달은 <code>batch_id</code> 중심</td></tr>
+        <tr><td>OpenAI Batch API</td><td>GPT 요약과 임베딩 비동기 처리</td><td>Batch ID를 <code>processing_jobs</code>에 먼저 기록해 중복 제출을 방지</td></tr>
+        <tr><td>FastAPI 추천 서비스</td><td>파이프라인 산출물을 기반으로 추천 후보 검색</td><td><code>embedding_vectors</code>와 앨범/리뷰 메타데이터를 사용해 pgvector 유사도 검색 수행</td></tr>
+      </tbody>
+    </table>
+  </div>
 </main>
 
 <script>
@@ -662,6 +1020,19 @@ end
     baseInput?.addEventListener("change", () => {
       const activeEndpoint = panel.querySelector(".endpoint-tab.active");
       if (activeEndpoint) updateSwagger(panel, activeEndpoint);
+    });
+  });
+
+  // 파이프라인 task 탭 전환 (플로우 05 — DAG별 독립 동작)
+  document.querySelectorAll("[data-pipeline-task]").forEach(tab => {
+    tab.addEventListener("click", () => {
+      const target = tab.dataset.pipelineTask;
+      const dagId = target.split("-")[0]; // "dag1" | "dag2" | "dag3"
+      // 같은 DAG의 탭과 패널만 조작
+      const tabGroup = tab.closest("[role='tablist']");
+      tabGroup.querySelectorAll("[data-pipeline-task]").forEach(t => t.classList.toggle("active", t === tab));
+      const dagPanel = tab.closest(".flow-workspace").querySelector(`[data-dag-panel="${dagId}"]`);
+      dagPanel.querySelectorAll(".pipeline-task-detail").forEach(d => d.classList.toggle("active", d.dataset.taskDetail === target));
     });
   });
 
