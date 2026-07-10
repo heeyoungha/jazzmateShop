@@ -7,6 +7,8 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "INFO"
     SUPABASE_URL: str
     SUPABASE_SERVICE_ROLE_KEY: str
+    DATABASE_URL: str = ""  # asyncpg DSN (postgres://user:pass@host:port/db). 설정 시 supabase-py 대신 사용.
+    DATABASE_POOL_SIZE: int = 10
     OPENAI_API_KEY: str
     OPENAI_EMBEDDING_MODEL: str = "text-embedding-3-small"
     OPENAI_CHAT_MODEL: str

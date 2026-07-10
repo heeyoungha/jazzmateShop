@@ -16,7 +16,7 @@ class AlbumEmbeddingRepository:
         self, embedding: list[float], top_k: int
     ) -> List[AlbumCandidate]:
         try:
-            response = self.database.rpc(
+            response = await self.database.rpc(
                 self.RPC_FUNC_NAME,
                 {
                     "query_embedding": embedding,   # 사용자 감상문 벡터

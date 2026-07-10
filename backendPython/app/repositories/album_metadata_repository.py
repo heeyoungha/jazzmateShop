@@ -20,7 +20,7 @@ class AlbumMetadataRepository:
             )
         self.database = database
 
-    def find_by_album_reference_ids(
+    async def find_by_album_reference_ids(
         self, album_reference_ids: list[str]
     ) -> dict[str, AlbumMetadata]:
         if not album_reference_ids:
@@ -28,7 +28,7 @@ class AlbumMetadataRepository:
 
         try:
             reference_response = (
-                self.database.from_(self.ALBUM_REFERENCE_TABLE)
+                await self.database.from_(self.ALBUM_REFERENCE_TABLE)
                 .select(f"{self.ALBUM_REFERENCE_ID_COLUMN},{self.RELEASE_GROUP_ID_COLUMN}")
                 .in_(self.ALBUM_REFERENCE_ID_COLUMN, album_reference_ids)
                 .not_
@@ -43,7 +43,7 @@ class AlbumMetadataRepository:
 
             release_group_ids = list(dict.fromkeys(release_group_by_reference_id.values()))
             album_response = (
-                self.database.from_(self.MB_ALBUM_TABLE)
+                await self.database.from_(self.MB_ALBUM_TABLE)
                 .select(self.MB_ALBUM_COLUMNS)
                 .in_(self.MB_ALBUM_ID_COLUMN, release_group_ids)
                 .execute()

@@ -18,10 +18,10 @@ class UserReviewEmbeddingRepository:
             )
         self.database = database
 
-    def find_by_user_id(self, user_id: str) -> list[list[float]]:
+    async def find_by_user_id(self, user_id: str) -> list[list[float]]:
         try:
             response = (
-                self.database.from_(self.REVIEW_TABLE)
+                await self.database.from_(self.REVIEW_TABLE)
                 .select(self.EMBEDDING_COLUMN)
                 .eq(self.USER_ID_COLUMN, user_id)
                 .not_

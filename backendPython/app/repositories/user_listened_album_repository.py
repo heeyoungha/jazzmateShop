@@ -21,10 +21,10 @@ class UserListenedAlbumRepository:
             )
         self.database = database
 
-    def find_by_user_id(self, user_id: str) -> list[list[float]]:
+    async def find_by_user_id(self, user_id: str) -> list[list[float]]:
         try:
             review_response = (
-                self.database.from_(self.REVIEW_TABLE)
+                await self.database.from_(self.REVIEW_TABLE)
                 .select(self.REVIEW_ALBUM_ID_COLUMN)
                 .eq(self.USER_ID_COLUMN, user_id)
                 .not_
@@ -36,7 +36,7 @@ class UserListenedAlbumRepository:
                 return []
 
             album_response = (
-                self.database.from_(self.ALBUM_TABLE)
+                await self.database.from_(self.ALBUM_TABLE)
                 .select(self.EMBEDDING_COLUMN)
                 .in_(self.ALBUM_ID_COLUMN, album_ids)
                 .not_

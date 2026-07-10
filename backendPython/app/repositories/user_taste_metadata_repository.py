@@ -20,10 +20,10 @@ class UserTasteMetadataRepository:
             )
         self.database = database
 
-    def find_by_user_id(self, user_id: str) -> list[AlbumMetadata]:
+    async def find_by_user_id(self, user_id: str) -> list[AlbumMetadata]:
         try:
             review_response = (
-                self.database.from_(self.REVIEW_TABLE)
+                await self.database.from_(self.REVIEW_TABLE)
                 .select(self.REVIEW_ALBUM_ID_COLUMN)
                 .eq(self.USER_ID_COLUMN, user_id)
                 .not_
@@ -35,7 +35,7 @@ class UserTasteMetadataRepository:
                 return []
 
             album_response = (
-                self.database.from_(self.ALBUM_TABLE)
+                await self.database.from_(self.ALBUM_TABLE)
                 .select(self.ALBUM_COLUMNS)
                 .in_(self.ALBUM_ID_COLUMN, album_ids)
                 .execute()
