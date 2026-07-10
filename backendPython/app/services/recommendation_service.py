@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import time
 from typing import Iterable
@@ -16,6 +17,14 @@ from app.schemas.recommendation import (
     RecommendationCallbackItem,
     RecommendationReason,
     normalize_score,
+)
+from app.observability.metrics import (
+    dec_recommendation_in_flight,
+    inc_recommendation_in_flight,
+    observe_recommendation_stage,
+    recommendation_stage_latency,
+    record_recommendation_completed,
+    record_recommendation_failed,
 )
 from app.services.embedding_service import EmbeddingService
 from app.services.recommendation_reason_service import RecommendationReasonService
@@ -57,115 +66,140 @@ class RecommendationService:
 
     async def recommend_by_review(self, review_id: int, review_content: str, user_id: str) -> None:
         t_start = time.monotonic()
+        terminal_status = "unknown"
+        inc_recommendation_in_flight()
 
-        # 감상문을 검색용 벡터로 변환한다
         try:
-            embedding = await self.embedding_service.embed_review(review_content)
-            logger.debug("embedding done | review_id=%s | elapsed=%.3fs", review_id, time.monotonic() - t_start)
-        except EmbeddingError:
-            await self._send_failed_safely(
-                review_id,
-                RecommendationErrorCode.EMBEDDING_FAILED,
-                "감상문 임베딩 생성에 실패했습니다.",
-            )
-            return
-        
-        try:
-            previous_review_embeddings = self.user_review_embedding_repository.find_by_user_id(
-                user_id
-            )
-            listened_album_embeddings = self.user_listened_album_repository.find_by_user_id(
-                user_id
-            )
-        except RepositoryError:
-            await self._send_failed_safely(
-                review_id,
-                RecommendationErrorCode.SEARCH_FAILED,
-                "사용자 감상 이력 조회에 실패했습니다.",
-            )
-            return
+            # 감상문을 검색용 벡터로 변환한다
+            try:
+                with observe_recommendation_stage("embedding"):
+                    embedding = await self.embedding_service.embed_review(review_content)
+                logger.debug("embedding done | review_id=%s | elapsed=%.3fs", review_id, time.monotonic() - t_start)
+            except EmbeddingError:
+                terminal_status = "failed_embedding"
+                await self._send_failed_safely(
+                    review_id,
+                    RecommendationErrorCode.EMBEDDING_FAILED,
+                    "감상문 임베딩 생성에 실패했습니다.",
+                )
+                return
+            
+            # personalization_lookup과 pgvector_search는 독립적이므로 병렬 실행
+            # taste_vector 블렌딩을 위해 embedding 기반 query_vector를 먼저 준비
+            query_vector = embedding
 
-        # 감상 이력이 있으면 감상문 벡터와 취향 벡터를 블렌딩한다
-        query_vector = embedding
-        taste_embeddings = previous_review_embeddings + listened_album_embeddings
-        if taste_embeddings:
-            query_vector = self.taste_vector_service.build_query_vector(
-                embedding, taste_embeddings
-            )
+            async def _personalization_lookup():
+                with observe_recommendation_stage("personalization_lookup"):
+                    prev = await self.user_review_embedding_repository.find_by_user_id(user_id)
+                    listened = await self.user_listened_album_repository.find_by_user_id(user_id)
+                return prev, listened
 
-        # 검색 벡터로 유사 앨범 후보를 조회한다
-        t_search = time.monotonic()
-        try:
-            candidates = await self.album_embedding_repository.find_similar_albums(
-                query_vector, self.candidate_pool_size
-            )
-            logger.debug("pgvector search done | review_id=%s | elapsed=%.3fs", review_id, time.monotonic() - t_search)
-        except RepositoryError:
-            await self._send_failed_safely(
-                review_id,
-                RecommendationErrorCode.SEARCH_FAILED,
-                "유사 앨범 검색에 실패했습니다.",
-            )
-            return
+            async def _pgvector_search():
+                t_search = time.monotonic()
+                with observe_recommendation_stage("pgvector_search"):
+                    result = await self.album_embedding_repository.find_similar_albums(
+                        query_vector, self.candidate_pool_size
+                    )
+                logger.debug("pgvector search done | review_id=%s | elapsed=%.3fs", review_id, time.monotonic() - t_search)
+                return result
 
-        if not candidates:
-            await self._send_failed_safely(
-                review_id,
-                RecommendationErrorCode.NO_CANDIDATES,
-                "추천 후보가 없습니다.",
-            )
-            return
+            try:
+                (previous_review_embeddings, listened_album_embeddings), candidates = await asyncio.gather(
+                    _personalization_lookup(),
+                    _pgvector_search(),
+                )
+            except RepositoryError:
+                terminal_status = "failed_search"
+                await self._send_failed_safely(
+                    review_id,
+                    RecommendationErrorCode.SEARCH_FAILED,
+                    "앨범 검색 또는 사용자 이력 조회에 실패했습니다.",
+                )
+                return
 
-        t_rerank = time.monotonic()
-        try:
-            candidates = self._rerank_candidates(user_id, list(candidates))
-            logger.debug("rerank done | review_id=%s | elapsed=%.3fs", review_id, time.monotonic() - t_rerank)
-        except RepositoryError:
-            await self._send_failed_safely(
-                review_id,
-                RecommendationErrorCode.SEARCH_FAILED,
-                "추천 메타데이터 조회에 실패했습니다.",
-            )
-            return
+            # 감상 이력이 있으면 감상문 벡터와 취향 벡터를 블렌딩한다
+            taste_embeddings = previous_review_embeddings + listened_album_embeddings
+            if taste_embeddings:
+                with observe_recommendation_stage("taste_vector"):
+                    query_vector = self.taste_vector_service.build_query_vector(
+                        embedding, taste_embeddings
+                    )
 
-        # 후보 앨범별 추천 사유를 생성한다
-        t_reason = time.monotonic()
-        try:
-            reasons = await self.recommendation_reason_service.generate_reasons(
-                review_content, candidates
-            )
-            logger.debug("reason generation done | review_id=%s | elapsed=%.3fs", review_id, time.monotonic() - t_reason)
-        except Exception as exc:
-            logger.exception("Recommendation reason generation failed: %s", exc)
-            await self._send_failed_safely(
-                review_id,
-                RecommendationErrorCode.REASON_FAILED,
-                "추천 사유 생성에 실패했습니다.",
-            )
-            return
+            if not candidates:
+                terminal_status = "failed_no_candidates"
+                await self._send_failed_safely(
+                    review_id,
+                    RecommendationErrorCode.NO_CANDIDATES,
+                    "추천 후보가 없습니다.",
+                )
+                return
 
-        recommendations = self._build_callback_items(candidates, reasons)
+            t_rerank = time.monotonic()
+            try:
+                with observe_recommendation_stage("rerank"):
+                    candidates = await self._rerank_candidates(user_id, list(candidates))
+                logger.debug("rerank done | review_id=%s | elapsed=%.3fs", review_id, time.monotonic() - t_rerank)
+            except RepositoryError:
+                terminal_status = "failed_search"
+                await self._send_failed_safely(
+                    review_id,
+                    RecommendationErrorCode.SEARCH_FAILED,
+                    "추천 메타데이터 조회에 실패했습니다.",
+                )
+                return
 
-        # 완료 결과와 감상문 embedding을 Spring Boot 콜백 API로 전달한다.
-        # embedding은 best-effort로 포함하며, Spring 측 저장 실패 시 추천 결과에 영향 없다.
-        logger.debug("processing done, sending callback | review_id=%s | total_elapsed=%.3fs", review_id, time.monotonic() - t_start)
-        try:
-            await self.spring_callback_client.send_completed_result(
-                review_id, recommendations, embedding
-            )
-            logger.debug("callback done | review_id=%s | total_elapsed=%.3fs", review_id, time.monotonic() - t_start)
-        except Exception as exc:
-            logger.exception("Spring callback failed: %s", exc)
+            # 후보 앨범별 추천 사유를 생성한다
+            t_reason = time.monotonic()
+            try:
+                with observe_recommendation_stage("reason_generation"):
+                    reasons = await self.recommendation_reason_service.generate_reasons(
+                        review_content, candidates
+                    )
+                logger.debug("reason generation done | review_id=%s | elapsed=%.3fs", review_id, time.monotonic() - t_reason)
+            except Exception as exc:
+                terminal_status = "failed_reason"
+                logger.exception("Recommendation reason generation failed: %s", exc)
+                await self._send_failed_safely(
+                    review_id,
+                    RecommendationErrorCode.REASON_FAILED,
+                    "추천 사유 생성에 실패했습니다.",
+                )
+                return
 
-    def _rerank_candidates(
+            with observe_recommendation_stage("build_callback_payload"):
+                recommendations = self._build_callback_items(candidates, reasons)
+
+            # 완료 결과와 감상문 embedding을 Spring Boot 콜백 API로 전달한다.
+            # embedding은 best-effort로 포함하며, Spring 측 저장 실패 시 추천 결과에 영향 없다.
+            logger.debug("processing done, sending callback | review_id=%s | total_elapsed=%.3fs", review_id, time.monotonic() - t_start)
+            try:
+                with observe_recommendation_stage("spring_callback"):
+                    await self.spring_callback_client.send_completed_result(
+                        review_id, recommendations, embedding
+                    )
+                terminal_status = "completed"
+                record_recommendation_completed()
+                logger.debug("callback done | review_id=%s | total_elapsed=%.3fs", review_id, time.monotonic() - t_start)
+            except Exception as exc:
+                terminal_status = "callback_error"
+                record_recommendation_failed("callback_error")
+                logger.exception("Spring callback failed: %s", exc)
+        finally:
+            dec_recommendation_in_flight()
+            recommendation_stage_latency.labels(
+                stage="total",
+                status=terminal_status,
+            ).observe(time.monotonic() - t_start)
+
+    async def _rerank_candidates(
         self, user_id: str, candidates: list[AlbumCandidate]
     ) -> list[AlbumCandidate]:
         if not candidates:
             return candidates
 
-        user_metadata = self.user_taste_metadata_repository.find_by_user_id(user_id)
+        user_metadata = await self.user_taste_metadata_repository.find_by_user_id(user_id)
         candidate_metadata_by_album_id = (
-            self.album_metadata_repository.find_by_album_reference_ids(
+            await self.album_metadata_repository.find_by_album_reference_ids(
                 [candidate.album_id for candidate in candidates]
             )
         )
@@ -200,9 +234,11 @@ class RecommendationService:
     async def _send_failed_safely(
         self, review_id: int, error_code: RecommendationErrorCode, message: str
     ) -> None:
+        record_recommendation_failed(error_code.value)
         try:
-            await self.spring_callback_client.send_failed_result(
-                review_id, error_code, message
-            )
+            with observe_recommendation_stage("spring_callback"):
+                await self.spring_callback_client.send_failed_result(
+                    review_id, error_code, message
+                )
         except Exception as exc:
             logger.exception("Spring callback failed: %s", exc)
