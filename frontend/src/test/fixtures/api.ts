@@ -85,7 +85,7 @@ export function criticsPage({ number = 0, last = false } = {}) {
       {
         id: `${CRITICS_ID}-${number}`,
         title: number === 0 ? "Kind of Blue Review" : "Blue Train Review",
-        reviewer: "All About Jazz",
+        reviewer: "Test Reviewer",
         date: "2026-05-23",
         reviewSummary: "정교한 앙상블과 절제된 긴장감이 돋보이는 리뷰입니다.",
       },
@@ -101,9 +101,9 @@ export function criticsPage({ number = 0, last = false } = {}) {
 export const criticsDetail = {
   id: CRITICS_ID,
   title: "Kind of Blue Review",
-  reviewer: "All About Jazz",
+  reviewer: "Test Reviewer",
   date: "2026-05-23",
   reviewSummary: "정교한 앙상블과 절제된 긴장감이 돋보이는 리뷰입니다.",
   content: "전체 리뷰 본문입니다.",
-  url: "https://www.allaboutjazz.com/example",
+  url: "https://example.com/review",
 };

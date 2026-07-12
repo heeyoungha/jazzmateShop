@@ -11,7 +11,7 @@ describe("CriticsReviewCard", () => {
     render(<CriticsReviewCard review={review} onClick={vi.fn()} />);
 
     expect(screen.getByText("Kind of Blue Review")).toBeInTheDocument();
-    expect(screen.getByText("All About Jazz")).toBeInTheDocument();
+    expect(screen.getByText("Test Reviewer")).toBeInTheDocument();
     expect(screen.getByText("2026년 5월 23일")).toBeInTheDocument();
   });
 

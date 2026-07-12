@@ -34,7 +34,7 @@ class CriticsReviewControllerTest {
     private final CriticsReview DEFAULT_REVIEW = CriticsReview.builder()
             .id(DEFAULT_ID)
             .title("Kind of Blue")
-            .reviewer("AllAboutJazz")
+            .reviewer("TestReviewer")
             .reviewSummary("GPT 요약 내용")
             .reviewContent("원문 내용")
             .reviewUrl("https://example.com")

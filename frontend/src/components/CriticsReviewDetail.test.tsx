@@ -11,7 +11,7 @@ describe("CriticsReviewDetail", () => {
     expect(screen.getByText("전체 리뷰 본문입니다.")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "원문 보기" })).toHaveAttribute(
       "href",
-      "https://www.allaboutjazz.com/example",
+      "https://example.com/review",
     );
   });
 });

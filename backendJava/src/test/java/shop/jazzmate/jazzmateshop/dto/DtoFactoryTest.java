@@ -146,7 +146,7 @@ class DtoFactoryTest {
     private final CriticsReview CRITICS = CriticsReview.builder()
             .id(UUID.fromString("00000000-0000-0000-0000-000000000001"))
             .title("Kind of Blue")
-            .reviewer("AllAboutJazz")
+            .reviewer("TestReviewer")
             .reviewSummary("GPT 요약 내용")
             .reviewContent("원문 내용")
             .reviewUrl("https://example.com")
@@ -166,7 +166,7 @@ class DtoFactoryTest {
 
             assertThat(summary.getId()).isEqualTo(CRITICS.getId());
             assertThat(summary.getTitle()).isEqualTo("Kind of Blue");
-            assertThat(summary.getReviewer()).isEqualTo("AllAboutJazz");
+            assertThat(summary.getReviewer()).isEqualTo("TestReviewer");
             assertThat(summary.getReviewSummary()).isEqualTo("GPT 요약 내용");
         }
     }
@@ -185,7 +185,7 @@ class DtoFactoryTest {
 
             assertThat(detail.getId()).isEqualTo(CRITICS.getId());
             assertThat(detail.getTitle()).isEqualTo("Kind of Blue");
-            assertThat(detail.getReviewer()).isEqualTo("AllAboutJazz");
+            assertThat(detail.getReviewer()).isEqualTo("TestReviewer");
             assertThat(detail.getReviewContent()).isEqualTo("원문 내용");
             assertThat(detail.getReviewSummary()).isEqualTo("GPT 요약 내용");
             assertThat(detail.getReviewUrl()).isEqualTo("https://example.com");
