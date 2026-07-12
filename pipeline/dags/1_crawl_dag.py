@@ -8,6 +8,7 @@ from airflow.models import Variable
 from airflow.decorators import dag, task
 from airflow.operators.trigger_dagrun import TriggerDagRunOperator
 from airflow.exceptions import AirflowSkipException
+from airflow.utils.trigger_rule import TriggerRule
 
 import logging
 
@@ -250,13 +251,12 @@ def crawl_dag():
             # 이전 시도에서 OpenAI 배치는 만들었는데 DB 저장만 실패한 경우 → DB 저장만 재시도
             if ti.try_number > 1:
                 openai_batch_result = ti.xcom_pull(key='openai_batch_result')
-                if openai_batch_result and openai_batch_result.get('batch_id'):
+                if openai_batch_result and openai_batch_result.get('openai_batch_id'):
                     logger.info("🔄 Retry: reusing existing OpenAI batch, retrying DB insert only")
                     result = db.create_batch_metadata_sync(
-                        batch_num=batch_num,
                         batch_id=batch_id,
                         stage='gpt',
-                        openai_batch_id=openai_batch_result['batch_id'],
+                        openai_batch_id=openai_batch_result['openai_batch_id'],
                         item_count=openai_batch_result['item_count'],
                         file_id=openai_batch_result.get('file_id'),
                         metadata=openai_batch_result.get('metadata', {}),
@@ -265,10 +265,14 @@ def crawl_dag():
                         raise Exception(
                             f"Failed to save processing_job for batch_num={batch_num} (DB insert failed on retry)"
                         )
-                    logger.info(f"✅ Task 3 completed (retry): batch_id={openai_batch_result['batch_id']}")
+                    logger.info(
+                        f"✅ Task 3 completed (retry): "
+                        f"openai_batch_id={openai_batch_result['openai_batch_id']}"
+                    )
                     return {
                         'batch_num': batch_num,
-                        'batch_id': openai_batch_result['batch_id'],
+                        'batch_id': batch_id,
+                        'openai_batch_id': openai_batch_result['openai_batch_id'],
                         'item_count': openai_batch_result['item_count'],
                     }
 
@@ -311,7 +315,6 @@ def crawl_dag():
 
             # processing_jobs 테이블에 저장 (실패 시 예외로 재시도 유도)
             result = db.create_batch_metadata_sync(
-                batch_num=batch_num,
                 stage='gpt',
                 batch_id=batch_id,
                 openai_batch_id=openai_batch_id,
@@ -328,12 +331,14 @@ def crawl_dag():
             logger.info(
                 f"✅ Task completed: "
                 f"batch_id={batch_id}, "
+                f"openai_batch_id={openai_batch_id}, "
                 f"items={len(reviews)}"
             )
 
             return {
                 'batch_num': batch_num,
                 'batch_id': batch_id,
+                'openai_batch_id': openai_batch_id,
                 'item_count': len(reviews)
             }
 
@@ -355,8 +360,6 @@ def crawl_dag():
             or ti.xcom_pull(task_ids='collect_and_register_urls')
         )
         return result
-
-    from airflow.utils.trigger_rule import TriggerRule
 
     """
     branch
@@ -388,7 +391,7 @@ def crawl_dag():
         trigger_dag_id='2_summary_dag',
         conf={
             'batch_id': '{{ ti.xcom_pull(task_ids="merge_collect_result")["batch_id"] }}',
-            'openai_batch_id': '{{ ti.xcom_pull(task_ids="submit_gpt_batch")["batch_id"] }}',
+            'openai_batch_id': '{{ ti.xcom_pull(task_ids="submit_gpt_batch")["openai_batch_id"] }}',
             'batch_num': '{{ ti.xcom_pull(task_ids="submit_gpt_batch")["batch_num"] }}',
         },
         wait_for_completion=False,

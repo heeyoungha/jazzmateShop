@@ -162,7 +162,7 @@ def summary_dag():
                         f"{success_rate_pct:.1f}% (proceeding)"
                     )
                 else:
-                    # 성공률 낮음 → 실패 처리
+                    # 성공률 낮음 → 실패 처리. downstream은 process_gpt_result에서 skip한다.
                     final_status = 'failed'
                     db.update_batch_job_status_sync(
                         openai_batch_id=openai_batch_id,
@@ -189,7 +189,7 @@ def summary_dag():
                         batch_id=openai_batch_id,
                         error_message=None
                     )
-                    # 부분 실패 허용: 실패해도 다음 단계로 진행
+                    # Sensor는 완료 처리하고, 결과 처리 task에서 downstream을 skip한다.
                     return True
             
             else:
@@ -206,7 +206,7 @@ def summary_dag():
                     metadata={'success_rate': 0.0}
                 )
                 logger.error(f"❌ Batch {openai_batch_id} failed (0% success)")
-                # 부분 실패 허용: 실패해도 다음 단계로 진행
+                # Sensor는 완료 처리하고, 결과 처리 task에서 downstream을 skip한다.
                 return True
             
             # 완료 처리 완료
@@ -222,7 +222,7 @@ def summary_dag():
                 metadata={'openai_status': openai_status}
             )
             logger.error(f"❌ Batch {openai_batch_id} failed (OpenAI status: {openai_status})")
-            # 부분 실패 허용: 실패해도 다음 단계로 진행
+            # Sensor는 완료 처리하고, 결과 처리 task에서 downstream을 skip한다.
             return True
         
         # 진행 중
@@ -305,6 +305,16 @@ def summary_dag():
                 batch_status=batch_status
             )
         except Exception as e:
+            from pipeline_services.exceptions import BatchFailedError
+            if isinstance(e, BatchFailedError):
+                db.update_batch_job_status_sync(
+                    openai_batch_id=openai_batch_id,
+                    status=batch.get('openai_status') or batch.get('status', 'failed'),
+                    parsing_status='failed',
+                )
+                logger.warning(f"⏭️ Batch failure, skipping downstream: {e}")
+                raise AirflowSkipException(str(e))
+
             # DB에 실패 기록
             db.update_batch_job_status_sync(
                 openai_batch_id=openai_batch_id,
@@ -313,11 +323,6 @@ def summary_dag():
                 error_message=str(e),
                 error_type='processing_error',
             )
-            # 영구 실패(배치 failed/expired/cancelled): 스킵 → 다음 태스크 실행 안 함
-            from pipeline_services.exceptions import BatchFailedError
-            if isinstance(e, BatchFailedError):
-                logger.warning(f"⏭️ Permanent batch failure, skipping downstream: {e}")
-                raise AirflowSkipException(str(e))
             logger.error(f"❌ GPT result processing failed: {e}", exc_info=True)
             raise
         
@@ -343,7 +348,7 @@ def summary_dag():
             db.log_api_usage(
                 openai_batch_id=openai_batch_id,
                 stage='gpt',
-                model='gpt-4o-mini',
+                model=openai.model,
                 prompt_tokens=token_usage['prompt_tokens'],
                 completion_tokens=token_usage['completion_tokens'],
             )
@@ -451,8 +456,8 @@ def summary_dag():
         
         # processing_jobs에 저장
         db.create_batch_metadata_sync(
-            batch_num=batch_num,
             stage='embedding',
+            batch_id=batch_id,
             openai_batch_id=embedding_batch_id,  # ✅ 실제 OpenAI batch_id
             item_count=len(processed_summaries),
             file_id=file_id,

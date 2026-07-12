@@ -25,7 +25,7 @@ x-airflow-common:
     # DAG Processor 독립 실행 활성화 (Airflow 2.8+)
     AIRFLOW__SCHEDULER__STANDALONE_DAG_PROCESSOR: 'true'
     # Python 모듈 경로 추가 (pipeline_services 사용)
-    PYTHONPATH: '/opt/airflow:/opt/airflow/pipeline/dags'
+    PYTHONPATH: '/opt/airflow:/opt/airflow/pipeline:/opt/airflow/pipeline/dags'
     # Webserver 워커 수 제한 (메모리 절약)
     AIRFLOW__WEBSERVER__WORKERS: '2'
     AIRFLOW__WEBSERVER__WORKER_REFRESH_INTERVAL: '1800'
@@ -78,7 +78,7 @@ services:
     <<: *airflow-common
     command: webserver
     ports:
-      - "8080:8080"
+      - "8081:8080"
     healthcheck:
       test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
       interval: 30s

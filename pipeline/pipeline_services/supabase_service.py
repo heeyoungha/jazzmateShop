@@ -7,7 +7,7 @@ from pipeline_services.exceptions import DatabaseError
 
 logger = logging.getLogger(__name__)
 
-class SuperbaseService:
+class SupabaseService:
 
     def get_pending_batch_for_retry(self) -> Optional[Dict[str, Any]]:
             """재시도할 미완료 배치 찾기"""
@@ -143,8 +143,8 @@ class SuperbaseService:
             # ==========================================
             # crawl_targets에 URL 존재하는지 확인 (멱등성 보장)
             existing_targets = self.client.table('crawl_targets')\
-                .select('id')\
-                .eq('url', url)\
+                .select('url')\
+                .in_('url', urls)\
                 .execute()
             
             existing_urls = {row['url'] for row in existing_targets.data}
@@ -277,57 +277,50 @@ class SuperbaseService:
                 logger.warning(f"크롤 작업 상태 업데이트 실패: {e}")
                 return False
             
-    def create_batch_metadata_sync(
+
+    def save_error_history(
         self,
-        batch_num: int,
         stage: str,
-        openai_batch_id: str,
-        item_count: int,
-        **kwargs
+        batch_id: Optional[str] = None,
+        crawl_job_id: Optional[str] = None,
+        processing_job_id: Optional[str] = None,
+        error_type: str = '',
+        error_message: str = '',
+        error_details: Optional[Dict[str, Any]] = None,
+        http_status_code: Optional[int] = None,
+        s3_original_html_path: Optional[str] = None
     ) -> Optional[str]:
-        
-        batch = self.get_pipeline_batch_by_num(batch_num)
-        if not batch:
-            logger.error(f"❌ Pipeline batch 조회 실패: batch_num={batch_num}")
+        if not self.client:
+            logger.warning("Supabase 연결 안됨, error_history 저장 불가")
             return None
-
-        metadata = {
-            'batch_id': batch['id'],
-            'stage': stage,
-            'openai_batch_id': openai_batch_id,
-            'status': 'submitted',
-            'openai_status': 'submitted',
-            'parsing_status': 'pending',
-            'item_count': item_count,
-            'total_count': item_count,
-            **kwargs,
-        }
-
-        record_id = self.save_batch_job_metadata_sync(metadata)
-
-        if record_id:
-            logger.info(f"✅ Batch metadata created: stage={stage}, openai_batch_id={openai_batch_id}, items={item_count}")
-        else:
-            logger.error(f"❌ Failed to create batch metadata: stage={stage}")
-
-        return record_id
-    
-
-    def save_batch_job_metadata_sync(self, metadata: Dict[str, Any]) -> Optional[str]:
-
-
         try:
-            # ON CONFLICT DO NOTHING으로 멱등성 보장 (필요한 경우)
-            response = self.client.table('processing_jobs').insert(metadata).execute()
+            data: Dict[str, Any] = {
+                'stage': stage,
+                'error_type': error_type,
+                'error_message': error_message,
+            }
+            if batch_id:
+                data['batch_id'] = batch_id
+            if crawl_job_id:
+                data['crawl_job_id'] = crawl_job_id
+            if processing_job_id:
+                data['processing_job_id'] = processing_job_id
+            if error_details:
+                data['error_details'] = error_details
+            if http_status_code:
+                data['http_status_code'] = http_status_code
+            if s3_original_html_path:
+                data['s3_original_html_path'] = s3_original_html_path
+
+            response = self.client.table('error_history').insert(data).execute()
             if response.data:
-                openai_batch_id = response.data[0].get('openai_batch_id', 'Unknown')
-                logger.info(f"✅ processing_jobs 저장 완료: openai_batch_id={openai_batch_id}")
+                logger.info(f"✅ Error history saved: stage={stage}, error_type={error_type}")
                 return response.data[0]['id']
             return None
         except Exception as e:
-            logger.error(f"❌ processing_jobs 저장 실패: {e}")
+            logger.error(f"❌ Error history 저장 실패: {e}")
             return None
-    
+
     def get_reviews_for_gpt(self, batch_num: int, batch_id: str) -> List[Dict[str, Any]]:
 
         try:
@@ -365,22 +358,9 @@ class SuperbaseService:
             logger.error(f"❌ Batch {batch_num} 리뷰 조회 실패: {e}")
             return []
     
-    def get_pipeline_batch_by_num(self, batch_num: int) -> Optional[Dict[str, Any]]:
-
-        try:
-            response = self.client.table('pipeline_batches')\
-                .select('*')\
-                .eq('batch_num', batch_num)\
-                .single()\
-                .execute()
-            return response.data if response.data else None
-        except Exception as e:
-            logger.error(f"❌ Pipeline batch 조회 실패 (batch_num={batch_num}): {e}")
-            return None
     
     def create_batch_metadata_sync(
         self,
-        batch_num: int,
         stage: str,
         batch_id: str,
         openai_batch_id: str,
@@ -410,3 +390,281 @@ class SuperbaseService:
         except Exception as e:
             logger.error(f"❌ processing_jobs 저장 실패: {e}")
             return None
+    
+    def update_batch_job_status_sync(
+        self,
+        openai_batch_id: str,
+        status: str,
+        **kwargs
+    ) -> bool:
+        """
+        processing_jobs 상태 업데이트 (openai_status + parsing_status 분리)
+        """
+        if not self.client:
+            logger.warning("Supabase 연결 안됨, processing_jobs 업데이트 스킵")
+            return False
+
+        update_data = {
+            'openai_status': status,
+            'status': status,
+            'updated_at': datetime.now().isoformat()
+        }
+
+        if status in ['success', 'partial_success', 'failed']:
+            update_data['completed_at'] = datetime.now().isoformat()
+
+        count = kwargs.get('processed_count')
+        if count is not None:
+            update_data['processed_count'] = count
+            update_data['completed_count'] = count
+        if kwargs.get('completed_count') is not None:
+            update_data['completed_count'] = kwargs['completed_count']
+
+        if kwargs.get('failed_count') is not None:
+            update_data['failed_count'] = kwargs['failed_count']
+
+        if kwargs.get('error_message'):
+            update_data['error_message'] = kwargs['error_message']
+
+        if kwargs.get('error_type'):
+            update_data['error_type'] = kwargs['error_type']
+
+        if kwargs.get('error_details'):
+            update_data['error_details'] = kwargs['error_details']
+
+        if kwargs.get('output_file_id'):
+            update_data['output_file_id'] = kwargs['output_file_id']
+
+        if kwargs.get('last_check_time'):
+            update_data['last_check_time'] = kwargs['last_check_time'].isoformat() if isinstance(kwargs['last_check_time'], datetime) else kwargs['last_check_time']
+
+        if kwargs.get('metadata'):
+            update_data['metadata'] = kwargs['metadata']
+
+        if kwargs.get('success_rate') is not None:
+            update_data['success_rate'] = float(kwargs['success_rate'])
+
+        if kwargs.get('parsing_status'):
+            update_data['parsing_status'] = kwargs['parsing_status']
+        if kwargs.get('parsing_count') is not None:
+            update_data['parsing_count'] = kwargs['parsing_count']
+        if kwargs.get('parsing_failed') is not None:
+            update_data['parsing_failed'] = kwargs['parsing_failed']
+        if kwargs.get('parsed_at'):
+            pt = kwargs['parsed_at']
+            update_data['parsed_at'] = pt.isoformat() if isinstance(pt, datetime) else pt
+
+        try:
+            self.client.table('processing_jobs')\
+                .update(update_data)\
+                .eq('openai_batch_id', openai_batch_id)\
+                .execute()
+            logger.debug(f"✅ processing_jobs 업데이트: openai_batch_id={openai_batch_id}, openai_status={status}")
+            return True
+        except Exception as e:
+            logger.error(f"❌ processing_jobs 업데이트 실패 (openai_batch_id={openai_batch_id}): {e}")
+            return False
+
+    def get_batch_by_id_sync(self, openai_batch_id: str) -> Optional[Dict[str, Any]]:
+        """
+        openai_batch_id로 processing_jobs 조회 (동기)
+        """
+        if not self.client:
+            return None
+
+        try:
+            response = self.client.table('processing_jobs')\
+                .select('*')\
+                .eq('openai_batch_id', openai_batch_id)\
+                .single()\
+                .execute()
+            return response.data if response.data else None
+        except Exception as e:
+            logger.error(f"❌ get_batch_by_id_sync 실패: {e}")
+            return None
+
+    def save_original_html(self, html_content: str, batch_num: int, crawl_job_id: str) -> Optional[str]:
+        """
+        원본 HTML 저장 (로컬 파일 시스템 또는 S3)
+
+        Returns:
+            str: 저장된 파일 경로 (실패 시 None)
+        """
+        import os
+        from pathlib import Path
+
+        use_s3 = os.getenv('USE_S3', 'false').lower() == 'true'
+
+        if use_s3:
+            # TODO: S3 업로드 구현
+            logger.warning("S3 업로드는 아직 구현되지 않았습니다")
+            return None
+        else:
+            try:
+                base_path = Path(os.getenv('CRAWL_STORAGE_PATH', 'data/crawled_html'))
+                file_path = base_path / str(batch_num) / crawl_job_id / 'original.html'
+                file_path.parent.mkdir(parents=True, exist_ok=True)
+                file_path.write_text(html_content, encoding='utf-8')
+                logger.debug(f"✅ HTML 저장: {file_path}")
+                return str(file_path)
+            except Exception as e:
+                logger.error(f"❌ HTML 저장 실패: {e}")
+                return None
+
+    def get_existing_raw_ids_sync(self, raw_ids: List[str]) -> set:
+        if not self.client:
+            raise RuntimeError("Supabase에 연결되지 않았습니다")
+
+        if not raw_ids:
+            return set()
+
+        try:
+            response = self.client.table('processed_summary')\
+                .select('raw_id')\
+                .in_('raw_id', raw_ids)\
+                .execute()
+            return {row['raw_id'] for row in response.data}
+        except Exception as e:
+            logger.error(f"❌ 기존 raw_ids 조회 실패: {e}")
+            return set()
+
+    def save_processed_summary_sync(
+        self, 
+        raw_id: str,  # UUID 문자열
+        summary: str, 
+        batch_num: int,
+        model_id: Optional[str] = None,
+        token_usage: Optional[Dict[str, int]] = None,
+        temperature: Optional[float] = None,
+        max_tokens: Optional[int] = None,
+        summary_data: Optional[Dict[str, Any]] = None
+    ) -> Optional[str]:
+        """
+        processed_summary 저장 및 ID 반환 (동기 버전)
+        
+        Args:
+            raw_id: 원본 데이터 ID (UUID 문자열)
+            summary: 요약 텍스트
+            batch_num: 배치 번호
+            model_id: 모델 ID
+            token_usage: 토큰 사용량
+            temperature: 온도 설정
+            max_tokens: 최대 토큰 수
+            summary_data: 전체 요약 데이터 (JSONB로 저장)
+            
+        Returns:
+            str: 생성된 레코드 ID (실패 시 None)
+        """
+        if not self.client:
+            raise RuntimeError("Supabase에 연결되지 않았습니다")
+        
+        try:
+            # summary_data가 제공되지 않으면 기본 구조 생성
+            if summary_data is None:
+                summary_data = {
+                    'summary': summary,
+                    'batch_num': batch_num,
+                    'token_usage': token_usage,
+                    'temperature': temperature,
+                    'max_tokens': max_tokens
+                }
+            else:
+                # summary_data에 batch_num 추가 (없는 경우)
+                if 'batch_num' not in summary_data:
+                    summary_data['batch_num'] = batch_num
+            
+            data = {
+                'raw_id': raw_id,  # UUID 문자열
+                'summary_text': summary,
+                'summary_data': summary_data
+            }
+            
+            # model_id가 제공되면 추가
+            if model_id:
+                data['model_id'] = model_id
+            
+            # token_usage 컬럼에도 저장
+            if token_usage:
+                data['token_usage'] = token_usage
+            
+            # 처리 설정 저장
+            if temperature is not None:
+                data['temperature'] = temperature
+            if max_tokens is not None:
+                data['max_tokens'] = max_tokens
+            
+            response = self.client.table('processed_summary')\
+                .insert(data)\
+                .execute()
+            
+            if response.data and len(response.data) > 0:
+                record_id = response.data[0]['id']
+                logger.debug(f"✅ processed_summary 저장 성공: raw_id={raw_id}, id={record_id}")
+                return record_id
+            else:
+                logger.warning(f"⚠️ processed_summary 저장 응답 없음: raw_id={raw_id}")
+                return None
+        except Exception as e:
+            logger.error(f"❌ processed_summary 저장 실패 (raw_id={raw_id}): {e}")
+            return None
+
+    def log_api_usage(
+        self,
+        openai_batch_id: str,
+        stage: str,
+        model: str,
+        prompt_tokens: int,
+        completion_tokens: int,
+    ) -> bool:
+        """
+        API 토큰 사용량 및 비용을 api_usage_logs에 기록.
+        단가는 ai_models 테이블에서 직접 조회하여 계산.
+
+        Args:
+            openai_batch_id: OpenAI Batch ID
+            stage: 'gpt' | 'embedding'
+            model: 사용 모델명
+            prompt_tokens: input token 수
+            completion_tokens: output token 수 (embedding은 0)
+        """
+        if not self.client:
+            logger.warning("Supabase 연결 안됨, api_usage_logs 저장 불가")
+            return False
+
+        input_rate, output_rate = self._get_model_rates(model)
+        cost_usd = (prompt_tokens / 1000.0) * input_rate + (completion_tokens / 1000.0) * output_rate
+
+        try:
+            self.client.table('api_usage_logs').insert({
+                'openai_batch_id': openai_batch_id,
+                'stage': stage,
+                'model': model,
+                'prompt_tokens': prompt_tokens,
+                'completion_tokens': completion_tokens,
+                'total_tokens': prompt_tokens + completion_tokens,
+                'cost_usd': cost_usd,
+            }).execute()
+            logger.info(
+                f"💰 API 사용량 기록: {stage}/{model} "
+                f"prompt={prompt_tokens}, completion={completion_tokens}, "
+                f"cost=${cost_usd:.6f}"
+            )
+            return True
+        except Exception as e:
+            logger.error(f"❌ api_usage_logs 저장 실패: {e}")
+            return False
+
+    def _get_model_rates(self, model_name: str) -> tuple[float, float]:
+        """ai_models 테이블에서 input/output 단가 조회. (cost_per_1k_input, cost_per_1k_output)"""
+        try:
+            resp = self.client.table('ai_models') \
+                .select('cost_per_1k_input, cost_per_1k_output') \
+                .eq('model_name', model_name) \
+                .single() \
+                .execute()
+            if resp.data:
+                return (resp.data.get('cost_per_1k_input') or 0.0,
+                        resp.data.get('cost_per_1k_output') or 0.0)
+        except Exception as e:
+            logger.warning(f"⚠️ ai_models 단가 조회 실패 ({model_name}): {e}")
+        return (0.0, 0.0)

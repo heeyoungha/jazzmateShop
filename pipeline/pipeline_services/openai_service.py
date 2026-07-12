@@ -1,12 +1,3 @@
-"""
-OpenAI API 서비스
-
-GPT를 사용한 리뷰 요약 및 분석
-
-두 가지 모드 지원:
-1. Realtime Mode: 일반 Chat API (즉시 처리, 정상 가격)
-2. Batch Mode: Batch API (24시간 이내 처리, 50% 할인)
-"""
 import os
 import json
 import logging
@@ -210,12 +201,6 @@ Important: Return pure JSON only, and do not include any other text. 반드시 J
     def summarize_reviews_batch(self, reviews: list[Dict[str, Any]]) -> list[Dict[str, Any]]:
         """
         여러 리뷰를 순차적으로 요약
-        
-        Args:
-            reviews: 리뷰 데이터 리스트
-            
-        Returns:
-            요약이 추가된 리뷰 리스트
         """
         logger.info(f"🤖 {len(reviews)}개 리뷰 GPT 요약 시작")
         
@@ -400,12 +385,6 @@ Important: Return pure JSON only, and do not include any other text. 반드시 J
     ) -> Optional[str]:
         """
         Embedding Batch 작업 생성
-        
-        Args:
-            file_id: 업로드된 파일 ID
-            
-        Returns:
-            Batch ID (성공 시) 또는 None
         """
         try:
             logger.info("🚀 Embedding Batch 작업 생성 중...")
@@ -429,12 +408,6 @@ Important: Return pure JSON only, and do not include any other text. 반드시 J
     def check_batch_status(self, batch_id: str) -> Optional[Dict[str, Any]]:
         """
         Batch 상태 확인
-        
-        Args:
-            batch_id: Batch ID
-            
-        Returns:
-            Batch 상태 정보
         """
         try:
             logger.info(f"📊 Batch 상태 확인 중: {batch_id}")
@@ -457,6 +430,16 @@ Important: Return pure JSON only, and do not include any other text. 반드시 J
                 logger.info(f"  - 완료: {request_counts['completed']}")
                 logger.info(f"  - 실패: {request_counts['failed']}")
             
+            errors = None
+            if hasattr(batch_response, 'errors') and batch_response.errors:
+                errors = [
+                    {
+                        'code': getattr(e, 'code', None),
+                        'message': getattr(e, 'message', None),
+                    }
+                    for e in getattr(batch_response.errors, 'data', [])
+                ]
+
             return {
                 'id': batch_response.id,
                 'status': status,
@@ -465,7 +448,8 @@ Important: Return pure JSON only, and do not include any other text. 반드시 J
                 'failed_at': getattr(batch_response, 'failed_at', None),
                 'output_file_id': getattr(batch_response, 'output_file_id', None),
                 'error_file_id': getattr(batch_response, 'error_file_id', None),
-                'request_counts': request_counts
+                'request_counts': request_counts,
+                'errors': errors,
             }
             
         except Exception as e:
@@ -475,13 +459,6 @@ Important: Return pure JSON only, and do not include any other text. 반드시 J
     def download_batch_results(self, batch_id: str, output_dir: str = "/tmp") -> Optional[str]:
         """
         Batch 결과 다운로드
-        
-        Args:
-            batch_id: Batch ID
-            output_dir: 결과 파일 저장 디렉토리
-            
-        Returns:
-            결과 파일 경로 (성공 시) 또는 None
         """
         try:
             logger.info(f"📥 Batch 결과 다운로드 중: {batch_id}")
@@ -515,17 +492,6 @@ Important: Return pure JSON only, and do not include any other text. 반드시 J
     def parse_batch_results(self, results_file: str) -> Dict[str, Any]:
         """
         Batch 결과 파일 파싱
-        
-        Args:
-            results_file: 결과 파일 경로
-            
-        Returns:
-            Dict: {
-                'summaries': Dict[str, Dict[str, Any]],  # custom_id를 키로 하는 요약 데이터
-                'parsing_success': int,  # 파싱 성공 개수
-                'parsing_failed': int,   # 파싱 실패 개수
-                'errors': List[Dict]     # 에러 상세 정보
-            }
         """
         logger.info(f"📖 Batch 결과 파싱 중: {results_file}")
 
@@ -607,17 +573,6 @@ Important: Return pure JSON only, and do not include any other text. 반드시 J
     def parse_embedding_batch_results(self, results_file: str) -> Dict[str, Any]:
         """
         Embedding Batch 결과 파일 파싱 (/v1/embeddings 응답 형식)
-
-        Args:
-            results_file: 결과 JSONL 파일 경로
-
-        Returns:
-            Dict: {
-                'items': List[Dict],  # [{'processed_id': str, 'raw_id': str, 'embedding': List[float]}]
-                'parsing_success': int,
-                'parsing_failed': int,
-                'errors': List[Dict]
-            }
         """
         logger.info(f"📖 Embedding batch 결과 파싱 중: {results_file}")
         items = []
