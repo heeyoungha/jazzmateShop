@@ -991,6 +991,72 @@ end
               </tbody>
             </table>
             <p style="margin:10px 0 0;font-size:13px;color:#5f6b7a;">반환값: <code>{ batch_num, batch_id, openai_batch_id, item_count }</code>. 완료 후 DAG 2 트리거. <br><br><b>재시도 멱등성:</b> OpenAI batch 생성 후 DB INSERT 전에 XCom에 <code>openai_batch_result</code>를 먼저 저장한다. 재시도 시(<code>try_number > 1</code>) XCom에 <code>openai_batch_id</code>가 있으면 OpenAI 재요청 없이 DB INSERT만 재시도한다. <br><br><b>스킵 동작:</b> 리뷰 0건이면 <code>AirflowSkipException</code>. <code>BillingLimitError</code> 발생 시에도 재시도 없이 스킵한다.</p>
+            <div style="margin-top:14px;padding:10px 12px;background:#f8f9fb;border:1px solid var(--line);border-radius:8px;">
+              <p style="margin:0 0 8px;font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.04em;">데이터 변형 흐름</p>
+
+              <p style="margin:8px 0 2px;font-size:13px;font-weight:700;">1. SupabaseService.get_reviews_for_gpt()</p>
+              <ul style="margin:2px 0 6px;padding-left:20px;font-size:12px;color:var(--muted);">
+                <li>입력: <code>batch_num</code>, <code>batch_id</code></li>
+                <li>쿼리: <code>crawl_jobs</code>(status='success') → <code>allthatjazz_raw</code>(crawl_job_id IN ids)</li>
+              </ul>
+              <div class="api-card-body" style="margin:0 0 12px;font-size:11px;">// 출력: List[Dict] — DB에서 조회한 리뷰 데이터
+[
+  {
+    "id": "raw_uuid",
+    "title": "Album Title",
+    "reviewer": "Reviewer Name",
+    "published_date": "2024-01-15",
+    "content": "Review body text...",
+    "album_info": { "artist": "...", "label": "...", "year": "..." },
+    "youtube_info": { "video_id": "..." },
+    "rating": 4,
+    "track_listing": "1. Track One\n2. Track Two",
+    "personnel": ["musician1", "musician2"],
+    "url": "https://...",
+    "batch_num": 1
+  },
+  ...
+]</div>
+
+              <p style="margin:8px 0 2px;font-size:13px;font-weight:700;">2. OpenAIService.build_batch_requests()</p>
+              <ul style="margin:2px 0 6px;padding-left:20px;font-size:12px;color:var(--muted);">
+                <li>API 호출 없음 — 리뷰 데이터를 OpenAI Batch API 요청 형식의 딕셔너리 배열로 변환만 수행</li>
+                <li>각 리뷰의 필드를 프롬프트 템플릿에 주입하여 <code>messages[].content</code>에 삽입</li>
+                <li><code>custom_id</code>: <code>batch_{batch_num}_review_{raw_id}_{url_suffix}</code> — 응답에서 원본 리뷰를 식별하는 키</li>
+              </ul>
+              <div class="api-card-body" style="margin:0 0 12px;font-size:11px;">// 출력: List[Dict] — Batch API 요청 배열 (아직 메모리에만 존재)
+[
+  {
+    "custom_id": "batch_1_review_abc123_album-review-1",
+    "method": "POST",
+    "url": "/v1/chat/completions",
+    "body": {
+      "model": "gpt-4o-mini",
+      "messages": [{ "role": "user", "content": "프롬프트 + 리뷰 데이터..." }],
+      "max_tokens": 2000,
+      "temperature": 0.3
+    }
+  },
+  ...
+]</div>
+
+              <p style="margin:8px 0 2px;font-size:13px;font-weight:700;">3. OpenAIService.upload_batch_file()</p>
+              <ul style="margin:2px 0 6px;padding-left:20px;font-size:12px;color:var(--muted);">
+                <li>배열 → <code>/tmp/batch_requests_{batch_num}.jsonl</code> 파일로 직렬화 (<code>json.dumps()</code> + 개행으로 한 줄씩 기록)</li>
+                <li>OpenAI Python SDK로 업로드: <code>client.files.create(file, purpose='batch')</code> → 내부적으로 <code>POST /v1/files</code> 호출 → <code>file_id</code> 반환</li>
+              </ul>
+              <div class="api-card-body" style="margin:0 0 12px;font-size:11px;">// /tmp/batch_requests_1.jsonl — 디스크에 기록된 JSONL (각 줄이 하나의 요청)
+{"custom_id":"batch_1_review_abc123_album-review-1","method":"POST","url":"/v1/chat/completions","body":{...}}
+{"custom_id":"batch_1_review_def456_album-review-2","method":"POST","url":"/v1/chat/completions","body":{...}}
+...</div>
+
+              <p style="margin:8px 0 2px;font-size:13px;font-weight:700;">4. OpenAIService.create_batch_job()</p>
+              <ul style="margin:2px 0 6px;padding-left:20px;font-size:12px;color:var(--muted);">
+                <li>OpenAI Python SDK로 배치 생성: <code>client.batches.create(input_file_id, endpoint, completion_window)</code> → 내부적으로 <code>POST /v1/batches</code> 호출 → <code>openai_batch_id</code> 반환</li>
+                <li>XCom에 <code>openai_batch_result</code> 먼저 저장 (재시도 시 OpenAI 중복 생성 방지)</li>
+                <li>DB <code>processing_jobs</code>에 INSERT (stage='gpt')</li>
+              </ul>
+            </div>
             <div class="api-card">
               <p class="api-card-title">OpenAI Batch API</p>
               <div class="api-card-item">
@@ -1011,7 +1077,9 @@ Response: { id: "file-...", bytes, filename }</div>
 }
 Response: { id: "batch-...", status: "validating" }</div>
               </div>
-              <a class="api-card-link" href="https://platform.openai.com/docs/api-reference/batch" target="_blank" rel="noreferrer">OpenAI Batch API 공식 문서 &rarr;</a>
+              <a class="api-card-link" href="https://platform.openai.com/docs/api-reference/files/create" target="_blank" rel="noreferrer">Files API 레퍼런스 &rarr;</a>
+              <a class="api-card-link" style="margin-left:12px;" href="https://platform.openai.com/docs/api-reference/batch/create" target="_blank" rel="noreferrer">Batch API 레퍼런스 &rarr;</a>
+              <a class="api-card-link" style="margin-left:12px;" href="https://platform.openai.com/docs/guides/batch" target="_blank" rel="noreferrer">Batch 가이드 (JSONL 행 형식) &rarr;</a>
             </div>
           </div>
         </div>
