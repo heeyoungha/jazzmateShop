@@ -684,6 +684,7 @@ end
           <button class="endpoint-tab active" data-pipeline-task="dag1-check">check_pending_batch</button>
           <button class="endpoint-tab" data-pipeline-task="dag1-create">create_batch</button>
           <button class="endpoint-tab" data-pipeline-task="dag1-collect">collect_and_register_urls</button>
+          <button class="endpoint-tab" data-pipeline-task="dag1-page">update_page_variable</button>
           <button class="endpoint-tab" data-pipeline-task="dag1-crawl">crawl_details</button>
           <button class="endpoint-tab" data-pipeline-task="dag1-gpt">submit_gpt_batch</button>
         </div>
@@ -735,6 +736,9 @@ else 신규 batch
     DAG1 -> DB : INSERT crawl_targets\n(신규 URL만)
     DAG1 -> DB : INSERT crawl_jobs\n(crawl_target_id, status=pending)
   end
+
+  == update_page_variable ==
+  DAG1 -> DAG1 : Variable.set("current_start_page")\n(end_page + 1, 순환: 2000 → 1)
 end
 
 == crawl_details ==
@@ -861,6 +865,17 @@ end
 // 반환: int (등록된 job 수)</div>
             </div>
           </div>
+          <div class="pipeline-task-detail" data-task-detail="dag1-page">
+            <p class="swagger-title" style="margin:0 0 10px">update_page_variable</p>
+            <table>
+              <thead><tr><th>방향</th><th>대상</th><th>필드</th></tr></thead>
+              <tbody>
+                <tr><td>READ</td><td>XCom (collect_and_register_urls)</td><td><code>end_page</code></td></tr>
+                <tr><td>WRITE</td><td>Airflow Variable</td><td><code>current_start_page</code> → <code>end_page + 1</code> (2001 이상이면 1로 순환)</td></tr>
+              </tbody>
+            </table>
+            <p style="margin:10px 0 0;font-size:13px;color:#5f6b7a;"><code>collect_and_register_urls</code>의 반환값에서 <code>end_page</code>를 받아 다음 실행의 시작 페이지를 갱신한다. <br><br><b>스킵 경로와의 차이:</b> 신규 URL 0건으로 스킵될 때는 <code>collect_and_register_urls</code> 내부에서 직접 Variable을 업데이트하고 <code>AirflowSkipException</code>을 발생시키므로 이 task는 실행되지 않는다. 즉, 성공 경로에서만 실행된다.</p>
+          </div>
           <div class="pipeline-task-detail" data-task-detail="dag1-crawl">
             <p class="swagger-title" style="margin:0 0 10px">crawl_details</p>
             <table>
@@ -876,6 +891,92 @@ end
               </tbody>
             </table>
             <p style="margin:10px 0 0;font-size:13px;color:#5f6b7a;">성공률 &lt; 80% 이면 Slack 알림 후 Task 실패. 반환값: <code>{ batch_num, batch_id, success_count, failed_count, duration }</code> <br><br><b>상태 전이:</b> <code>pending/failed → running → success | failed</code>. 각 전이마다 <code>updated_at</code>과 해당 타임스탬프(<code>started_at</code>/<code>completed_at</code>)를 갱신한다. <br><br><b>has_raw 보정:</b> <code>allthatjazz_raw</code>에 이미 데이터가 있으면(<code>has_raw=true</code>) 크롤링을 건너뛰고 <code>status</code>를 <code>success</code>로 보정한다. 이전 실행에서 크롤링은 성공했지만 상태 업데이트가 실패한 경우를 처리한다.</p>
+            <div style="margin-top:14px;padding:10px 12px;background:#f8f9fb;border:1px solid var(--line);border-radius:8px;">
+              <p style="margin:0 0 8px;font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.04em;">데이터 변형 흐름</p>
+
+              <p style="margin:8px 0 2px;font-size:13px;font-weight:700;">1. SupabaseService.get_pending_jobs()</p>
+              <ul style="margin:2px 0 6px;padding-left:20px;font-size:12px;color:var(--muted);">
+                <li>입력: <code>batch_id: str</code></li>
+                <li>쿼리: <code>crawl_jobs</code> JOIN <code>crawl_targets!inner(url)</code>, <code>allthatjazz_raw(id)</code></li>
+                <li>후처리: Supabase 중첩 객체를 평탄화 — <code>crawl_targets.url → job.url</code>, <code>allthatjazz_raw</code> 존재 여부 → <code>has_raw: bool</code></li>
+              </ul>
+              <div class="api-card-body" style="margin:0 0 12px;font-size:11px;">// 출력: List[Dict] — 평탄화된 pending job 목록
+[
+  {
+    "id": "crawl_job_uuid",
+    "status": "pending",
+    "attempt_count": 0,
+    "crawl_target_id": "target_uuid",
+    "url": "https://www.allaboutjazz.com/album-review-1",
+    "has_raw": false
+  },
+  ...
+]</div>
+
+              <p style="margin:8px 0 2px;font-size:13px;font-weight:700;">2. CrawlJobManager._process_one_job() — has_raw 분기</p>
+              <ul style="margin:2px 0 6px;padding-left:20px;font-size:12px;color:var(--muted);">
+                <li><code>has_raw=true</code>: 크롤링 건너뛰고 <code>crawl_jobs.status → success</code>로 보정 (이전 실행에서 INSERT는 됐지만 상태 갱신이 실패한 경우)</li>
+                <li><code>has_raw=false</code>: 아래 3~6단계 진행</li>
+              </ul>
+
+              <p style="margin:8px 0 2px;font-size:13px;font-weight:700;">3. 크롤링 (CrawlJobManager._process_one_job 내부)</p>
+              <ul style="margin:2px 0 6px;padding-left:20px;font-size:12px;color:var(--muted);">
+                <li>메서드 체인: <code>PlaywrightJazzCrawler.fetch_html(url)</code> → <code>BeautifulSoup(html)</code> → <code>extract_review_details(soup, url)</code></li>
+                <li>에러 분류: <code>RetryableError</code> → task 전체 재시도, <code>PermanentError</code> → 해당 job만 실패 기록 후 다음으로</li>
+              </ul>
+              <div class="api-card-body" style="margin:0 0 12px;font-size:11px;">// review_data: 크롤러가 추출한 원본 구조
+{
+  "url": "https://www.allaboutjazz.com/album-review-1",
+  "title": "Album Title",
+  "reviewer": "Reviewer Name",
+  "date": "January 15, 2024",        // ← 원본 날짜 문자열
+  "content": "Review body text...",
+  "album_info": { "artist": "...", "label": "...", "year": "..." },
+  "youtube_info": { "video_id": "..." },
+  "rating": 4,
+  "track_listing": "1. Track One\n2. Track Two",
+  "personnel": ["musician1", "musician2"]
+}</div>
+
+              <p style="margin:8px 0 2px;font-size:13px;font-weight:700;">4. 필드 변형 (DB 스키마 매핑)</p>
+              <ul style="margin:2px 0 6px;padding-left:20px;font-size:12px;color:var(--muted);">
+                <li><code>date</code> → <code>published_date_raw</code> (원본 문자열 이동)</li>
+                <li><code>published_date_raw</code> → <code>parse_date()</code> → <code>published_date</code> (ISO 형식 파싱)</li>
+                <li><code>crawled_at</code> 추가 (현재 시각 ISO 문자열)</li>
+                <li><code>url</code>, <code>batch_num</code> 제거 (DB 컬럼에 없음, FK로 연결)</li>
+              </ul>
+
+              <p style="margin:8px 0 2px;font-size:13px;font-weight:700;">5. Validation + 완성도 체크</p>
+              <ul style="margin:2px 0 6px;padding-left:20px;font-size:12px;color:var(--muted);">
+                <li><code>validate_review_data()</code>: 필수 필드(<code>title</code>, <code>content</code> 등) falsy 체크 → 실패 시 <code>error_history</code> 기록 후 <code>failed</code></li>
+                <li><code>is_data_complete()</code>: 선택 필드 포함 전체 완성도 → <code>is_fully_complete: bool</code> 추가</li>
+              </ul>
+
+              <p style="margin:8px 0 2px;font-size:13px;font-weight:700;">6. 원본 HTML 저장 + DB INSERT</p>
+              <ul style="margin:2px 0 6px;padding-left:20px;font-size:12px;color:var(--muted);">
+                <li><code>save_original_html()</code> → S3에 저장 → <code>s3_original_html_path</code> 추가</li>
+                <li><code>crawl_job_id</code> 추가 (FK 연결)</li>
+                <li>최종 INSERT → <code>allthatjazz_raw</code> 테이블</li>
+                <li>성공 시 <code>crawl_jobs.status → success</code></li>
+              </ul>
+              <div class="api-card-body" style="margin:0 0 4px;font-size:11px;">// INSERT allthatjazz_raw — 최종 변형된 데이터
+{
+  "crawl_job_id": "crawl_job_uuid",
+  "title": "Album Title",
+  "reviewer": "Reviewer Name",
+  "published_date_raw": "January 15, 2024",
+  "published_date": "2024-01-15",
+  "content": "Review body text...",
+  "album_info": { "artist": "...", "label": "...", "year": "..." },
+  "youtube_info": { "video_id": "..." },
+  "rating": 4,
+  "track_listing": "1. Track One\n2. Track Two",
+  "personnel": ["musician1", "musician2"],
+  "crawled_at": "2024-01-20T14:30:00",
+  "is_fully_complete": true,
+  "s3_original_html_path": "s3://bucket/batch_1/crawl_job_uuid.html"
+}</div>
+            </div>
           </div>
           <div class="pipeline-task-detail" data-task-detail="dag1-gpt">
             <p class="swagger-title" style="margin:0 0 10px">submit_gpt_batch</p>

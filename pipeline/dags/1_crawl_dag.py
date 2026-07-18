@@ -165,6 +165,7 @@ def crawl_dag():
         retries=2,  # Airflow가 재시도
         retry_delay=timedelta(minutes=5), # 재시도 전 5분 대기
     )
+    
     def crawl_details(collect_result: Dict[str, Any]) -> Dict[str, Any]:
         from pipeline_services import (
             SupabaseService,

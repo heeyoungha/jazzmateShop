@@ -2,6 +2,8 @@ import asyncio
 import logging
 from typing import Dict
 
+from bs4 import BeautifulSoup
+
 from dags.crawling.services.resource_monitor import ResourceMonitor
 from dags.crawling.core.config import ResourceThresholds
 from pipeline_services.exceptions import (
@@ -15,20 +17,23 @@ logger = logging.getLogger(__name__)
 class CrawlJobManager:
     def __init__(self, superbase_service):
         self.db = superbase_service
-        
+
     async def process_crawl_jobs(
         self,
         batch_id: str,
         batch_num: int,
     ) -> Dict[str, int]:
         """크롤러 초기화 → pending 작업 처리 → 크롤러 종료"""
-        from pipeline_services.review_crawler_service import ReviewCrawlerService
+        from dags.crawling.crawlers.playwright_crawler import PlaywrightJazzCrawler
+        from dags.crawling.core.config import CrawlerConfig
 
-        review_crawler = ReviewCrawlerService()
-        await review_crawler.initialize()
+        crawler_config = CrawlerConfig.from_env()
+        crawler = PlaywrightJazzCrawler(crawler_config=crawler_config)
+        await crawler.start()
+        logger.info("✅ Playwright crawler started")
+
         resource_monitor = ResourceMonitor(thresholds=ResourceThresholds.default())
         try:
-            # 크롤링할 url 조회
             pending_jobs = self.db.get_pending_jobs(batch_id)
 
             if not pending_jobs:
@@ -46,7 +51,7 @@ class CrawlJobManager:
                         job=job,
                         batch_id=batch_id,
                         batch_num=batch_num,
-                        review_crawler=review_crawler,
+                        crawler=crawler,
                         resource_monitor=resource_monitor,
                     )
 
@@ -56,15 +61,12 @@ class CrawlJobManager:
                         failed_count += 1
 
                 except RetryableError:
-                    # ✅ 재시도 가능한 에러 → Airflow가 재시도하도록 재전파
                     raise
                 except Exception as e:
-                    # DNS 에러는 재시도 가능 → Airflow가 재시도하도록 재전파
                     if self._is_dns_error(e):
                         url = job.get('url', '')
                         logger.error(f"❌ DNS failure: {url[:60]} - {e}")
                         raise NetworkError(f"DNS failure: {e}") from e
-                    # 예상치 못한 에러 → 영구 실패로 간주하고 다음으로 진행
                     url = job['url']
                     logger.error(f"❌ Error processing {url[:60]}: {e}")
                     self._record_failed_job(
@@ -83,7 +85,8 @@ class CrawlJobManager:
                 'failed_count': failed_count
             }
         finally:
-            await review_crawler.close()
+            await crawler.close()
+            logger.info("✅ Playwright crawler closed")
 
     async def _process_one_job(
         self,
@@ -91,7 +94,7 @@ class CrawlJobManager:
         job: Dict,
         batch_id: str,
         batch_num: int,
-        review_crawler,
+        crawler,
         resource_monitor: ResourceMonitor,
     ) -> str:
         """단일 crawl_job 처리. 반환값: success 또는 failed."""
@@ -126,17 +129,26 @@ class CrawlJobManager:
         # 상태: pending → running
         self.db.update_crawl_job_status(crawl_job_id, 'running')
 
-        # 크롤링 실행 (원본 HTML 포함)
+        # 크롤링: fetch_html → BeautifulSoup → extract_review_details
         original_html = None
+        review_data = None
         try:
-            # 크롤링 실행 (튜플 반환: review_data, original_html)
-            review_data, original_html = await review_crawler.crawl_review_details(url)
+            html = await crawler.fetch_html(url, referer=crawler.reviews_url)
+            original_html = html
+
+            if not html:
+                logger.warning(f"⚠️ HTML fetch failed: {url[:60]}")
+            else:
+                soup = BeautifulSoup(html, 'html.parser')
+                review_data = crawler.extract_review_details(soup, url)
+                if not review_data or not review_data.get('content'):
+                    logger.warning(f"⚠️ Content extraction failed: {url[:60]}")
+                    review_data = None
+
         except RetryableError as e:
-            # ✅ 재시도 가능한 에러 → Airflow가 재시도하도록 재전파
             logger.warning(f"⚠️ Retryable error for {url[:60]}: {e}")
             raise
         except PermanentError as e:
-            # ✅ 영구 실패 → error_history에 기록하고 다음으로 진행
             self._record_failed_job(
                 batch_id=batch_id,
                 batch_num=batch_num,
@@ -147,9 +159,19 @@ class CrawlJobManager:
             )
             logger.error(f"❌ Permanent error: {url[:60]} - {e}")
             return 'failed'
+        except Exception as e:
+            self._record_failed_job(
+                batch_id=batch_id,
+                batch_num=batch_num,
+                crawl_job_id=crawl_job_id,
+                error_type='parse_error',
+                error_message=str(e),
+                original_html=original_html,
+            )
+            logger.error(f"❌ Unexpected crawl error: {url[:60]} - {e}")
+            return 'failed'
 
         if not review_data:
-            
             self._record_failed_job(
                 batch_id=batch_id,
                 batch_num=batch_num,
@@ -187,7 +209,6 @@ class CrawlJobManager:
         is_valid, missing_fields, error_msg = validate_review_data(review_data)
 
         if not is_valid:
-            # Validation 실패 → error_history에 기록
             self._record_failed_job(
                 batch_id=batch_id,
                 batch_num=batch_num,
@@ -236,11 +257,9 @@ class CrawlJobManager:
             return 'failed'
         except Exception as e:
             if self._is_dns_error(e):
-                # DNS 해석 실패 → 일시적 네트워크 장애, Airflow가 재시도하도록 재전파
                 logger.error(f"❌ DNS failure during DB save: {url[:60]} - {e}")
                 raise NetworkError(f"DNS failure during DB save: {e}") from e
 
-            # DB 저장 실패
             self._record_failed_job(
                 batch_id=batch_id,
                 batch_num=batch_num,
@@ -251,7 +270,6 @@ class CrawlJobManager:
             )
             logger.error(f"❌ DB save failed: {url[:60]} - {e}")
             return 'failed'
-
 
     def _record_failed_job(
         self,
