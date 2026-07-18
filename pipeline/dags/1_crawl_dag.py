@@ -81,12 +81,11 @@ def crawl_dag():
 
     @task(task_id='collect_and_register_urls', execution_timeout=timedelta(minutes=30))
     def collect_and_register_urls(batch_info: Dict[str, Any], page_count: int = 5) -> Dict[str, Any]:
-        from pipeline_services import (
-            SupabaseService,
-            URLCollectorService,
-        )
+        from pipeline_services import SupabaseService
         from pipeline_services.async_runner import run_async
         from pipeline_services.exceptions import BlockedError, ParseError, NetworkError, TimeoutError
+        from dags.crawling.crawlers.playwright_crawler import PlaywrightJazzCrawler
+        from dags.crawling.core.config import CrawlerConfig
 
         batch_num = batch_info['batch_num']
         batch_id = batch_info['batch_id']
@@ -101,12 +100,17 @@ def crawl_dag():
         db = SupabaseService()
 
         # URL 수집
-        url_collector = URLCollectorService(db)
+        async def _collect_urls(start, end):
+            crawler = PlaywrightJazzCrawler(crawler_config=CrawlerConfig.from_env())
+            try:
+                await crawler.start()
+                all_urls = await crawler.collect_links_in_single_tab(start_page=start, end_page=end)
+                return list(dict.fromkeys(all_urls))
+            finally:
+                await crawler.close()
+
         try:
-            urls = run_async(url_collector.collect_review_urls(
-                start_page=start_page,
-                end_page=end_page,
-            ))
+            urls = run_async(_collect_urls(start_page, end_page))
             logger.info(f"✅ URL 수집 완료: {len(urls)}개")
         except Exception as e:
             logger.error(f"❌ URL 수집 실패: {e}", exc_info=True)

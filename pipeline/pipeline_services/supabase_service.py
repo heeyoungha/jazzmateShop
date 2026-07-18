@@ -1,7 +1,7 @@
 import os
 import logging
 from supabase import create_client, Client
-from typing import List, Dict, Any, Optional, Set
+from typing import List, Dict, Any, Optional
 from datetime import datetime
 from pipeline_services.exceptions import DatabaseError
 
@@ -99,33 +99,6 @@ class SupabaseService:
             raise
             
 
-    def get_successful_crawl_target_urls(self, urls: List[str], batch_size: int = 200) -> Set[str]:
-
-        if not urls:
-            return set()
-        if not self.client:
-            raise DatabaseError("Supabase client가 초기화되지 않았습니다")
-        if batch_size <= 0:
-            raise ValueError("batch_size must be greater than 0")
-                
-        existing: Set[str] = set()
-        for i in range(0, len(urls), batch_size):
-            chunk = urls[i : i + batch_size]
-            try:
-                resp = self.client.table('crawl_targets')\
-                    .select('url')\
-                    .in_('url', chunk)\
-                    .eq('has_successful_crawl', True)\
-                    .execute()
-                
-                if resp.data:
-                    existing.update(r['url'] for r in resp.data)
-
-            except Exception as e:
-                logger.error(f"crawl_targets 기존 URL 조회 실패: {e}", exc_info=True)
-                raise DatabaseError("crawl_targets 기존 URL 조회 실패") from e
-        return existing
-    
     def register_crawl_jobs(
         self,
         urls: List[str],

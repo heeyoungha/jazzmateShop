@@ -2,7 +2,6 @@ from pipeline_services.supabase_service import SupabaseService
 from pipeline_services.openai_service import OpenAIService
 from pipeline_services.slack_service import SlackService
 from pipeline_services.gpt_result_processor import GptResultProcessor
-from pipeline_services.url_collector_service import URLCollectorService
 from pipeline_services.review_crawler_service import ReviewCrawlerService
 from pipeline_services.crawl_job_manager import CrawlJobManager
 from pipeline_services.async_runner import run_async
@@ -25,8 +24,7 @@ __all__ = [
     'OpenAIService',
     'SlackService',
     'GptResultProcessor',
-    'URLCollectorService',
-    'ReviewCrawlerService',
+'ReviewCrawlerService',
     'CrawlJobManager',
     'run_async',
     'RetryableError',
