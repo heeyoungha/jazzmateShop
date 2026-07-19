@@ -54,16 +54,8 @@ def summary_dag():
         openai_batch_id = conf.get('openai_batch_id')
         batch_id = conf.get('batch_id')
         
-        # DAG 1에서 트리거된 경우: batch_id, openai_batch_id 둘 다 필수. 하나라도 없으면 fail
-        if batch_id or openai_batch_id:
-            if not batch_id or not openai_batch_id:
-                raise Exception(
-                    "DAG 2 was triggered with config but batch_id or openai_batch_id is missing. "
-                )
-            # 둘 다 있으면 openai_batch_id 그대로 사용 (DB 조회 없음)        
-        
-        else:
-            # 2단계만 따로 실행: Config 없음 → DB에서 최신 진행 중 배치 조회
+        # 2단계만 따로 실행: Config 없음 → DB에서 최신 진행 중 배치 조회
+        if not batch_id and not openai_batch_id:
             db = SupabaseService()
             response = db.client.table('processing_jobs')\
                 .select('*')\
@@ -76,7 +68,13 @@ def summary_dag():
                 raise Exception("No in-progress GPT batch found")
             batch = response.data[0]
             openai_batch_id = batch['openai_batch_id']
-            batch_id = batch['batch_id'] 
+            batch_id = batch['batch_id']
+
+        # DAG 1에서 트리거된 경우: batch_id, openai_batch_id 둘 다 필수
+        elif not batch_id or not openai_batch_id:
+            raise Exception(
+                "DAG 2 was triggered with config but batch_id or openai_batch_id is missing. "
+            )
 
         if not openai_batch_id:
             raise AirflowFailException("openai_batch_id could not be resolved")
@@ -244,15 +242,16 @@ def summary_dag():
         db = SupabaseService()
 
         if openai_batch_id_conf:
-            # DAG 1에서 트리거된 경우: openai_batch_id로 processing_jobs 조회
+            # conf 존재: batch 상태 조회 + batch_num은 conf에서 추출
             batch = db.get_batch_by_id_sync(openai_batch_id_conf)
             if not batch:
                 raise Exception(f"Batch not found: openai_batch_id={openai_batch_id_conf}")
             openai_batch_id = openai_batch_id_conf
+            batch_num = int(conf['batch_num'])
         else:
-            # config 없음: DB에서 최신 completed 배치 조회
+            # conf 없음: DB에서 최신 completed 배치 조회 (JOIN으로 batch_num도 함께)
             response = db.client.table('processing_jobs')\
-                .select('*')\
+                .select('*, pipeline_batches(batch_num)')\
                 .eq('stage', 'gpt')\
                 .in_('openai_status', ['success', 'partial_success', 'failed'])\
                 .order('completed_at', desc=True)\
@@ -264,28 +263,11 @@ def summary_dag():
 
             batch = response.data[0]
             openai_batch_id = batch['openai_batch_id']
-        
-        # batch_num 조회 (pipeline_batches에서)
-        batch_id_fk = batch['batch_id']  # FK
-        if not batch_id_fk:
-            raise Exception(f"batch_id is None in processing_jobs: batch={batch}")
-        
-        batch_response = db.client.table('pipeline_batches')\
-            .select('batch_num')\
-            .eq('id', batch_id_fk)\
-            .single()\
-            .execute()
-
-        if not batch_response.data:
-            raise Exception(f"No pipeline_batch found for batch_id={batch_id_fk}")
-
-        batch_num = batch_response.data['batch_num'] if batch_response.data else None
-        if batch_num is None:
-            raise Exception(f"batch_num is None for batch_id={batch_id_fk}")
+            batch_num = batch['pipeline_batches']['batch_num']
 
         batch_status = batch.get('openai_status') or batch.get('status')
         if not batch_status:
-            raise Exception(f"batch_status is None for batch_id={batch_id_fk}")     
+            raise Exception(f"batch_status is None for openai_batch_id={openai_batch_id}")     
 
         # 파싱 시작: parsing_status = running
         db.update_batch_job_status_sync(
@@ -360,8 +342,12 @@ def summary_dag():
             f"skipped={result['skipped_count']}"
         )
         
+        # batch_id: processing_jobs.batch_id (= pipeline_batches.id)
+        pipeline_batch_id = batch.get('batch_id') or conf.get('batch_id')
+
         return {
             'batch_num': batch_num,
+            'batch_id': pipeline_batch_id,
             'success_count': result['success_count'],
             'error_count': result['failed_count']
         }
@@ -375,67 +361,22 @@ def summary_dag():
         from pipeline_services import SupabaseService, OpenAIService
 
         batch_num = gpt_result['batch_num']
+        batch_id = gpt_result['batch_id']
 
         logger.info(f"🚀 Submitting Embedding Batch for batch {batch_num}")
 
-        # DB 연결
         db = SupabaseService()
 
-        # batch_num → batch_id → crawl_job_id → raw id (allthatjazz_raw에는 batch_num 컬럼 없음)
-        # Step 1: batch_num으로 pipeline_batches.id 조회
-        batch_row = db.client.table('pipeline_batches')\
-            .select('id')\
-            .eq('batch_num', batch_num)\
-            .limit(1)\
-            .execute()
-        if not batch_row.data:
-            raise Exception(f"No pipeline_batch found for batch_num {batch_num}")
-        batch_id = batch_row.data[0]['id']
+        # RPC로 4단계 조인을 DB에서 한 번에 처리
+        response = db.client.rpc(
+            'get_summaries_by_batch_num',
+            {'p_batch_num': batch_num}
+        ).execute()
 
-        # Step 2: batch_id로 crawl_jobs.id 목록 조회
-        crawl_jobs_response = db.client.table('crawl_jobs')\
-            .select('id')\
-            .eq('batch_id', batch_id)\
-            .limit(50000)\
-            .execute()
-        if not crawl_jobs_response.data:
-            raise Exception(f"No crawl_jobs found for batch_num {batch_num}")
-        crawl_job_ids = [row['id'] for row in crawl_jobs_response.data]
-
-        # Step 3: crawl_job_id로 allthatjazz_raw.id 조회 (청크 단위, in 쿼리 크기 제한 대비)
-        raw_ids = []
-        chunk_size = 500
-        for i in range(0, len(crawl_job_ids), chunk_size):
-            chunk = crawl_job_ids[i:i + chunk_size]
-            raw_response = db.client.table('allthatjazz_raw')\
-                .select('id')\
-                .in_('crawl_job_id', chunk)\
-                .execute()
-            if raw_response.data:
-                raw_ids.extend(row['id'] for row in raw_response.data)
-
-        if not raw_ids:
-            raise Exception(f"No raw data found for batch {batch_num}")
-        logger.info(f"📋 Found {len(raw_ids)} raw_ids for batch {batch_num}")
-        
-        # Step 2: raw_ids로 processed_summary 조회
-        # 배치 크기 제한을 위해 청크 단위로 조회
-        processed_summaries = []
-        chunk_size = 1000
-        
-        for i in range(0, len(raw_ids), chunk_size):
-            chunk_raw_ids = raw_ids[i:i + chunk_size]
-            response = db.client.table('processed_summary')\
-                .select('id, raw_id, summary_text')\
-                .in_('raw_id', chunk_raw_ids)\
-                .execute()
-            
-            if response.data:
-                processed_summaries.extend(response.data)
-        
+        processed_summaries = response.data
         if not processed_summaries:
             raise Exception(f"No processed_summary found for batch {batch_num}")
-        
+
         logger.info(f"📋 {len(processed_summaries)}개 요약을 임베딩 배치로 제출")
         
         # OpenAI Embedding Batch API 제출
@@ -476,7 +417,8 @@ def summary_dag():
 
         return {
             'batch_num': batch_num,
-            'batch_id': embedding_batch_id,
+            'batch_id': batch_id,
+            'openai_batch_id': embedding_batch_id,
             'item_count': len(processed_summaries)
         }
 
@@ -494,7 +436,7 @@ def summary_dag():
         trigger_dag_id='3_embedding_vector_dag',
         conf={
             'batch_id': '{{ ti.xcom_pull(task_ids="submit_embedding_batch")["batch_id"] }}',
-            'openai_batch_id': '{{ ti.xcom_pull(task_ids="submit_embedding_batch")["batch_id"] }}',  # 정상 워크플로: DB 조회 없이 사용
+            'openai_batch_id': '{{ ti.xcom_pull(task_ids="submit_embedding_batch")["openai_batch_id"] }}',
             'batch_num': '{{ ti.xcom_pull(task_ids="submit_embedding_batch")["batch_num"] }}',
         },
         wait_for_completion=False,  # DAG 3은 Sensor가 대기하므로 False

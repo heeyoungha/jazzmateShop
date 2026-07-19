@@ -1107,29 +1107,90 @@ participant "DAG 1" as DAG1
 participant "DAG 2\n2_summary_dag" as DAG2
 participant "OpenAI\nBatch API" as OAI
 participant "PostgreSQL" as DB
+participant "Slack" as SL
 participant "DAG 3" as DAG3
 
 DAG1 -> DAG2 : TriggerDagRunOperator\n{batch_id, openai_batch_id}
 
+== wait_for_gpt_completion ==
+
+alt DAG 1에서 트리거 (conf 존재)
+  DAG2 -> DAG2 : conf에서 batch_id,\nopenai_batch_id 추출
+else conf 없음 (단독 실행)
+  DAG2 -> DB : SELECT processing_jobs\n(stage='gpt', 진행 중 배치\nORDER BY submitted_at DESC\nLIMIT 1)
+  DB --> DAG2 : openai_batch_id, batch_id
+end
+
 loop Sensor (reschedule · 5분 간격 · 24h timeout)
-  DAG2 -> OAI : GPT batch 상태 조회
-  OAI --> DAG2 : status, request_counts
-  DAG2 -> DB : UPDATE processing_jobs\n(openai_status, processed_count,\nsuccess_rate, last_check_time)
+  DAG2 -> OAI : GET /v1/batches/{batch_id}\n(GPT batch 상태 조회)
+  OAI --> DAG2 : status, request_counts,\noutput_file_id
+
+  DAG2 -> DB : UPDATE processing_jobs\n(openai_status, processed_count,\nfailed_count, last_check_time,\noutput_file_id)
+
   alt completed
-    DAG2 -> DAG2 : success | partial_success | failed 세분화\n(성공률 < 80% → failed)
+    alt 성공률 = 100%
+      DAG2 -> DB : UPDATE processing_jobs\n(status → success,\nsuccess_rate=1.0)
+    else 성공률 >= 80%
+      DAG2 -> DB : UPDATE processing_jobs\n(status → partial_success,\nsuccess_rate)
+    else 성공률 < 80%
+      DAG2 -> DB : UPDATE processing_jobs\n(status → failed,\nerror_type='low_success_rate')
+      DAG2 -> SL : 알림 전송\n(stage=gpt, success_rate)
+      DAG2 -> DAG2 : return True\n(downstream에서 skip 처리)
+    else 완전 실패 (0건 성공)
+      DAG2 -> DB : UPDATE processing_jobs\n(status → failed,\nerror_type='complete_failure')
+      DAG2 -> DAG2 : return True
+    end
+  else failed / expired / cancelled
+    DAG2 -> DB : UPDATE processing_jobs\n(status → failed,\nerror_type='batch_api_failed')
+    DAG2 -> DAG2 : return True
   else in_progress / validating
-    DAG2 -> DAG2 : 대기 (reschedule)
+    DAG2 -> DAG2 : return False (대기 · reschedule)
   end
 end
 
-DAG2 -> OAI : output file download
-DAG2 -> DB : INSERT processed_summary\n(raw_id, summary_text, metadata)
-DAG2 -> DB : UPDATE processing_jobs\n(parsing_status=done, parsing_count,\nparsed_at)
-DAG2 -> DB : INSERT api_usage_logs\n(stage=gpt, prompt_tokens,\ncompletion_tokens)
+== process_gpt_result ==
 
-DAG2 -> OAI : Embedding Batch 제출\n(file upload → batch create)
-DAG2 -> DB : INSERT processing_jobs\n(stage=embedding, openai_batch_id)
-DAG2 -> DAG3 : TriggerDagRunOperator\n{batch_id, openai_batch_id}
+alt conf에 openai_batch_id 존재
+  DAG2 -> DAG2 : openai_batch_id, batch_num\n← conf에서 추출
+  DAG2 -> DB : SELECT processing_jobs\n(openai_batch_id로 조회)
+  DB --> DAG2 : batch_status
+else conf 없음 (태스크 단독 실행)
+  DAG2 -> DB : SELECT processing_jobs\nJOIN pipeline_batches(batch_num)\n(stage='gpt',\nstatus IN [success, partial_success, failed]\nORDER BY completed_at DESC\nLIMIT 1)
+  DB --> DAG2 : openai_batch_id, batch_num,\nbatch_status
+end
+
+DAG2 -> DB : UPDATE processing_jobs\n(parsing_status → 'running')
+
+DAG2 -> OAI : GET /v1/files/{file_id}/content\n(output file download)
+OAI --> DAG2 : JSONL 결과
+
+alt BatchFailedError (배치 실패 상태)
+  DAG2 -> DB : UPDATE processing_jobs\n(parsing_status → 'failed')
+  DAG2 -> DAG2 : AirflowSkipException\n(downstream 스킵)
+else 처리 성공
+  DAG2 -> DB : INSERT processed_summary\n(raw_id, summary_text, metadata)
+  DAG2 -> DB : UPDATE processing_jobs\n(parsing_status → 'done',\nparsing_count, parsing_failed,\nparsed_at)
+  DAG2 -> DB : INSERT api_usage_logs\n(stage=gpt, prompt_tokens,\ncompletion_tokens)
+else 처리 실패 (예외)
+  DAG2 -> DB : UPDATE processing_jobs\n(parsing_status → 'failed',\nerror_message, error_type)
+end
+
+== submit_embedding_batch ==
+
+DAG2 -> DB : RPC get_summaries_by_batch_num(batch_num)\n(4테이블 JOIN: pipeline_batches →\ncrawl_jobs → allthatjazz_raw →\nprocessed_summary)
+DB --> DAG2 : summaries[] {id, raw_id, summary_text}
+
+DAG2 -> DAG2 : create_embedding_batch_requests\n(summaries → JSONL 변환)
+
+DAG2 -> OAI : POST /v1/files\n(embedding JSONL upload)
+OAI --> DAG2 : file_id
+
+DAG2 -> OAI : POST /v1/batches\n(embedding batch create)
+OAI --> DAG2 : embedding_batch_id
+
+DAG2 -> DB : INSERT processing_jobs\n(stage='embedding',\nopenai_batch_id,\nitem_count, file_id)
+
+DAG2 -> DAG3 : TriggerDagRunOperator\n{batch_id, openai_batch_id,\nbatch_num}
 @enduml
           </pre>
         </div>
@@ -1169,8 +1230,12 @@ DAG2 -> DAG3 : TriggerDagRunOperator\n{batch_id, openai_batch_id}
             <table>
               <thead><tr><th>방향</th><th>테이블</th><th>필드</th></tr></thead>
               <tbody>
-                <tr><td>READ</td><td><code>processing_jobs</code></td><td><code>openai_batch_id</code>, <code>batch_id</code>, <code>openai_status</code></td></tr>
-                <tr><td>READ</td><td><code>pipeline_batches</code></td><td><code>batch_num</code> (batch_id FK로 조회)</td></tr>
+                <tr><td colspan="3" style="font-weight:600;background:#f0f4f8;">conf 존재 시</td></tr>
+                <tr><td>—</td><td>conf</td><td><code>openai_batch_id</code>, <code>batch_num</code> 추출</td></tr>
+                <tr><td>READ</td><td><code>processing_jobs</code></td><td><code>openai_status</code> (batch_status 확인용)</td></tr>
+                <tr><td colspan="3" style="font-weight:600;background:#f0f4f8;">conf 없을 시 (태스크 단독 실행)</td></tr>
+                <tr><td>READ</td><td><code>processing_jobs</code> JOIN <code>pipeline_batches</code></td><td><code>openai_batch_id</code>, <code>openai_status</code>, <code>batch_num</code></td></tr>
+                <tr><td colspan="3" style="font-weight:600;background:#f0f4f8;">공통 처리</td></tr>
                 <tr><td>READ (외부)</td><td>OpenAI Batch API</td><td>output file download → GPT 응답 JSONL</td></tr>
                 <tr><td>INSERT</td><td><code>processed_summary</code></td><td><code>raw_id</code>, <code>summary_text</code>, <code>metadata</code></td></tr>
                 <tr><td>UPDATE</td><td><code>processing_jobs</code></td><td><code>parsing_status → 'running'|'done'|'failed'</code>, <code>parsing_count</code>, <code>parsing_failed</code>, <code>parsed_at</code></td></tr>
@@ -1205,15 +1270,65 @@ DAG2 -> DAG3 : TriggerDagRunOperator\n{batch_id, openai_batch_id}
             <table>
               <thead><tr><th>방향</th><th>테이블</th><th>필드</th></tr></thead>
               <tbody>
-                <tr><td>READ</td><td><code>pipeline_batches</code></td><td><code>id</code> (batch_num으로 조회)</td></tr>
-                <tr><td>READ</td><td><code>crawl_jobs</code></td><td><code>id</code> (batch_id로 조회)</td></tr>
-                <tr><td>READ</td><td><code>allthatjazz_raw</code></td><td><code>id</code> (crawl_job_id로 조회)</td></tr>
-                <tr><td>READ</td><td><code>processed_summary</code></td><td><code>id</code>, <code>raw_id</code>, <code>summary_text</code></td></tr>
+                <tr><td>READ (RPC)</td><td><code>get_summaries_by_batch_num()</code></td><td><code>id</code>, <code>raw_id</code>, <code>summary_text</code> (batch_num으로 4테이블 JOIN)</td></tr>
                 <tr><td>WRITE (외부)</td><td>OpenAI Batch API</td><td>embedding file upload → <code>file_id</code>, batch create → <code>openai_batch_id</code></td></tr>
                 <tr><td>INSERT</td><td><code>processing_jobs</code></td><td><code>batch_id</code>, <code>stage='embedding'</code>, <code>openai_batch_id</code>, <code>item_count</code>, <code>file_id</code></td></tr>
               </tbody>
             </table>
-            <p style="margin:10px 0 0;font-size:13px;color:#5f6b7a;">반환값: <code>{ batch_num, batch_id (openai_batch_id), item_count }</code> → DAG 3 트리거</p>
+            <p style="margin:10px 0 0;font-size:13px;color:#5f6b7a;">반환값: <code>{ batch_num, batch_id (pipeline_batches.id), openai_batch_id, item_count }</code> → DAG 3 트리거</p>
+            <div style="margin-top:14px;padding:10px 12px;background:#f8f9fb;border:1px solid var(--line);border-radius:8px;">
+              <p style="margin:0 0 8px;font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.04em;">데이터 변형 흐름</p>
+
+              <p style="margin:8px 0 2px;font-size:13px;font-weight:700;">1. Supabase RPC: get_summaries_by_batch_num()</p>
+              <ul style="margin:2px 0 6px;padding-left:20px;font-size:12px;color:var(--muted);">
+                <li>입력: <code>batch_num</code> (process_gpt_result의 xcom에서 전달)</li>
+                <li>DB 함수가 4테이블 JOIN 수행: <code>pipeline_batches</code> → <code>crawl_jobs</code> → <code>allthatjazz_raw</code> → <code>processed_summary</code></li>
+              </ul>
+              <div class="api-card-body" style="margin:0 0 12px;font-size:11px;">// 출력: List[Dict] — 해당 배치의 요약 텍스트
+[
+  {
+    "id": "processed_summary_uuid",
+    "raw_id": "allthatjazz_raw_uuid",
+    "summary_text": "GPT가 생성한 요약 텍스트..."
+  },
+  ...
+]</div>
+
+              <p style="margin:8px 0 2px;font-size:13px;font-weight:700;">2. OpenAIService.create_embedding_batch_requests()</p>
+              <ul style="margin:2px 0 6px;padding-left:20px;font-size:12px;color:var(--muted);">
+                <li>API 호출 없음 — 요약 데이터를 OpenAI Embedding Batch API 요청 형식의 딕셔너리 배열로 변환만 수행</li>
+                <li><code>custom_id</code>: <code>embedding_{processed_id}_{raw_id}</code> — 응답에서 원본 요약을 식별하는 키</li>
+              </ul>
+              <div class="api-card-body" style="margin:0 0 12px;font-size:11px;">// 출력: List[Dict] — Batch API 요청 배열 (아직 메모리에만 존재)
+[
+  {
+    "custom_id": "embedding_abc123_def456",
+    "method": "POST",
+    "url": "/v1/embeddings",
+    "body": {
+      "model": "text-embedding-3-small",
+      "input": "GPT가 생성한 요약 텍스트..."
+    }
+  },
+  ...
+]</div>
+
+              <p style="margin:8px 0 2px;font-size:13px;font-weight:700;">3. OpenAIService.upload_batch_file()</p>
+              <ul style="margin:2px 0 6px;padding-left:20px;font-size:12px;color:var(--muted);">
+                <li>배열 → <code>/tmp/batch_requests_{batch_num}.jsonl</code> 파일로 직렬화 (<code>json.dumps()</code> + 개행으로 한 줄씩 기록)</li>
+                <li>OpenAI Python SDK로 업로드: <code>client.files.create(file, purpose='batch')</code> → 내부적으로 <code>POST /v1/files</code> 호출 → <code>file_id</code> 반환</li>
+              </ul>
+              <div class="api-card-body" style="margin:0 0 12px;font-size:11px;">// /tmp/batch_requests_1.jsonl — 디스크에 기록된 JSONL (각 줄이 하나의 요청)
+{"custom_id":"embedding_abc123_def456","method":"POST","url":"/v1/embeddings","body":{...}}
+{"custom_id":"embedding_ghi789_jkl012","method":"POST","url":"/v1/embeddings","body":{...}}
+...</div>
+
+              <p style="margin:8px 0 2px;font-size:13px;font-weight:700;">4. OpenAIService.create_embedding_batch_job()</p>
+              <ul style="margin:2px 0 6px;padding-left:20px;font-size:12px;color:var(--muted);">
+                <li>OpenAI Python SDK로 배치 생성: <code>client.batches.create(input_file_id, endpoint, completion_window)</code> → 내부적으로 <code>POST /v1/batches</code> 호출 → <code>openai_batch_id</code> 반환</li>
+                <li>DB <code>processing_jobs</code>에 INSERT (stage='embedding')</li>
+              </ul>
+            </div>
             <div class="api-card">
               <p class="api-card-title">OpenAI Batch API</p>
               <div class="api-card-item">
@@ -1234,7 +1349,9 @@ Response: { id: "file-...", bytes, filename }</div>
 }
 Response: { id: "batch-...", status: "validating" }</div>
               </div>
-              <a class="api-card-link" href="https://platform.openai.com/docs/api-reference/batch/create" target="_blank" rel="noreferrer">OpenAI Create Batch 공식 문서 &rarr;</a>
+              <a class="api-card-link" href="https://platform.openai.com/docs/api-reference/files/create" target="_blank" rel="noreferrer">Files API 레퍼런스 &rarr;</a>
+              <a class="api-card-link" style="margin-left:12px;" href="https://platform.openai.com/docs/api-reference/batch/create" target="_blank" rel="noreferrer">Batch API 레퍼런스 &rarr;</a>
+              <a class="api-card-link" style="margin-left:12px;" href="https://platform.openai.com/docs/guides/batch" target="_blank" rel="noreferrer">Batch 가이드 (JSONL 행 형식) &rarr;</a>
             </div>
           </div>
         </div>
