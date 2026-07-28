@@ -29,12 +29,13 @@ load-tests/
 │
 ├── results/                       # 측정 결과
 │   ├── 1vu-smoke.json             # 1 VU smoke 테스트 k6 raw summary
-│   ├── 1000vu-ramping.json        # 1000 VU ramping 테스트 k6 raw summary
+│   ├── 1vu-fastapi-metrics-smoke.json
+│   ├── 500vu-fastapi-metrics.json
+│   ├── 500vu-resource-stats.tsv
 │   └── monitoring/                # Grafana 캡처
-│       └── 개인화클러스터링/        # 클러스터링/메타DB 적용 후 1000 VU 측정 캡처
+│       └── 개인화클러스터링/        # 클러스터링/메타DB 적용 후 측정 캡처
 │
 └── docs/                          # 문서
-    ├── recommendation-e2e-clustering-meta.md  # 측정 결과 및 SSE 전환 근거
     └── monitoring-guide.md                    # 모니터링 설정/실행/해석 가이드
 ```
 
@@ -63,6 +64,10 @@ load-tests/
 ### 1. 스택 실행
 
 ```bash
+# Mock 스택 (외부 의존 없음, .env 불필요)
+docker compose -f load-tests/docker-compose.mock.yml up --build
+
+# DB Real 스택 (실제 Supabase + OpenAI mock, .env 필요)
 docker compose -f load-tests/docker-compose.db-real.yml up --build
 ```
 
@@ -116,5 +121,4 @@ load-tests/recommendation-e2e.js
 
 ## 참고 문서
 
-- 측정 결과 및 SSE 전환 근거: `docs/recommendation-e2e-clustering-meta.md`
 - 모니터링 설정/실행/해석: `docs/monitoring-guide.md`

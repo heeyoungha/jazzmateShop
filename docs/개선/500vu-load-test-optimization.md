@@ -34,36 +34,32 @@ skinparam defaultFontSize 13
 skinparam componentFontSize 13
 skinparam noteFontSize 12
 skinparam arrowThickness 1.5
-skinparam componentStyle rectangle
 
-component "k6" as k6 #EEF2FF {
-  note as k6note
-    500 VU (ramping)
-  end note
-}
+component "k6" as k6 #EEF2FF
+component "Spring Boot\n(Tomcat)" as spring #E8F5E9
+component "FastAPI\n(uvicorn)" as fastapi #E8EAF6
+component "PostgreSQL\n(e2e-db)" as pg #FBE9E7
 
-component "Spring Boot\n(Tomcat)" as spring #E8F5E9 {
-  note as springnote
-    Tomcat threads: 200 (default)
-    Hikari pool: 10 (default)
-    @Async Executor: core 10 / max 50 / queue 500
-  end note
-}
+note right of k6
+  500 VU (ramping)
+end note
 
-component "FastAPI\n(uvicorn)" as fastapi #E8EAF6 {
-  note as fastapinote
-    workers: 4 (processes)
-    asyncpg pool: 100 / worker → 총 400 connections
-    httpx pool (→ Spring): 600
-  end note
-}
+note right of spring
+  Tomcat threads: 200 (default)
+  Hikari pool: 10 (default)
+  @Async Executor: core 10 / max 50 / queue 500
+end note
 
-component "PostgreSQL\n(e2e-db)" as pg #FBE9E7 {
-  note as pgnote
-    max_connections: 500
-    Spring 10 + FastAPI 400 = 410
-  end note
-}
+note right of fastapi
+  workers: 4 (processes)
+  asyncpg pool: 100 / worker → 총 400 connections
+  httpx pool (→ Spring): 600
+end note
+
+note right of pg
+  max_connections: 500
+  Spring 10 + FastAPI 400 = 410
+end note
 
 k6 --> spring : HTTP (submit / poll)
 spring --> fastapi : HTTP / httpx pool 600

@@ -93,7 +93,7 @@ load-tests/recommendation-e2e.js
 | Completion Coverage | `k6_completed_reviews_total / k6_submitted_reviews_total` | 낮을수록 파이프라인 적체 심각 |
 | PENDING 누적 | `k6_pending_responses_total` | 반복 조회 누적량 |
 | 제출/완료 누적 | `k6_submitted_reviews_total`, `k6_completed_reviews_total` | 격차가 backlog |
-| E2E p99 | `k6_time_to_completed_p99` | 완료까지 걸린 시간 |
+| E2E p95 | `k6_time_to_completed_p95` | 완료까지 걸린 시간 |
 
 ### Spring 내부 패널 (병목 위치 확인)
 
@@ -103,6 +103,15 @@ load-tests/recommendation-e2e.js
 | Hikari Pending Connections | 0이면 DB pool 여유, 증가하면 DB 병목 |
 | JVM Live Threads | thread 수 추이 |
 | HTTP Request Rate | polling GET이 폭증하면 PENDING 사용자 반복 조회 |
+
+### FastAPI 내부 패널 (추천 파이프라인 병목 확인)
+
+| 패널 | 해석 |
+|---|---|
+| FastAPI Stage Latency p95 | embedding, pgvector search, rerank, reason generation, callback 중 느린 구간 |
+| FastAPI Total Latency p95 | 추천 처리 시작부터 callback 완료까지의 전체 시간 |
+| FastAPI In-Flight Recommendations | 동시에 처리 중인 추천 작업 수 |
+| FastAPI Recommendation Result Rate | completed/failed/callback_error 상태별 처리율 |
 
 ---
 
