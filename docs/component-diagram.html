@@ -29,6 +29,7 @@
     .subtitle { margin: 0; color: var(--muted); font-size: 14px; }
     main { max-width: 1280px; margin: 0 auto; padding: 28px 24px 60px; }
     h2 { font-size: 18px; margin: 36px 0 12px; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+    h3 { font-size: 15px; margin: 24px 0 8px; color: var(--muted); }
 
     .tabs {
       display: flex;
@@ -82,6 +83,70 @@
     th, td { padding: 10px 14px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
     th { background: #eef2f7; font-weight: 650; white-space: nowrap; }
     tr:last-child td { border-bottom: 0; }
+
+    .layer-label {
+      margin: 20px 0 6px;
+      padding: 6px 14px;
+      background: #1f2933;
+      color: #fff;
+      font-size: 13px;
+      font-weight: 700;
+      border-radius: 6px;
+      display: inline-block;
+    }
+    .layer-sub-label {
+      margin: 14px 0 6px 24px;
+      padding: 4px 12px;
+      background: #eef2f7;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      border-radius: 4px;
+      border-left: 3px solid #94a3b8;
+      display: inline-block;
+    }
+    .layer-arrow {
+      text-align: center;
+      padding: 10px 0;
+      font-size: 13px;
+      color: var(--muted);
+      letter-spacing: 0.02em;
+    }
+    .layer-arrow-inner {
+      text-align: center;
+      padding: 4px 0;
+      font-size: 18px;
+      color: #94a3b8;
+    }
+
+    .sub-tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 16px;
+      padding: 4px;
+      background: #f0f4fa;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+    }
+    .sub-tab {
+      border: 0;
+      border-radius: 6px;
+      padding: 7px 13px;
+      background: transparent;
+      color: #4b5563;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .sub-tab.active {
+      background: #fff;
+      color: #111827;
+      box-shadow: 0 1px 2px rgba(15,23,42,0.08);
+    }
+    .sub-panel { display: none; }
+    .sub-panel.active { display: block; }
+
     code {
       padding: 2px 5px;
       background: #f0f3f7;
@@ -104,6 +169,7 @@
     <button class="tab" data-tab="flow02">플로우 02 · AI 추천 처리</button>
     <button class="tab" data-tab="flow03">플로우 03 · 내 감상문 목록</button>
     <button class="tab" data-tab="flow04">플로우 04 · 전문가 리뷰</button>
+    <button class="tab" data-tab="flow05">플로우 05 · 파이프라인</button>
   </div>
 
   <!-- ── 전체 개요 ── -->
@@ -152,7 +218,6 @@ node "FastAPI :8000\n(내부 전용)" {
 
 node "Supabase PostgreSQL" as DB
 node "OpenAI API" as OAI
-node "MusicBrainz API" as MB
 
 AAJ --> DAG1 : 크롤링
 DAG1 --> DAG2
@@ -175,7 +240,7 @@ PS --> PREP
 PS --> PCLI
 PCLI --> JC : 콜백 POST
 PE --> OAI
-JC --> MB
+JC --> DB : mb_album 조회
 JR --> DB
 PREP --> DB
 @enduml
@@ -190,7 +255,7 @@ PREP --> DB
         <tr><td>FastAPI</td><td>임베딩 생성, 유사도 검색, 추천 사유 생성, Spring 콜백</td><td>내부 전용 (외부 미노출)</td></tr>
         <tr><td>Supabase</td><td>전체 데이터 저장소</td><td>내부 전용</td></tr>
         <tr><td>OpenAI API</td><td>텍스트 임베딩 / 추천 사유 생성 (Chat)</td><td>FastAPI → 외부 호출</td></tr>
-        <tr><td>MusicBrainz API</td><td>앨범 메타 검색 (앨범명 검색 기능)</td><td>Spring Boot → 외부 호출</td></tr>
+        <tr><td>mb_album (Supabase)</td><td>앨범 메타 검색 (앨범명 검색 기능)</td><td>MusicBrainz 데이터 사전 적재, Spring Boot → 자체 DB 조회</td></tr>
       </tbody>
     </table>
 
@@ -238,7 +303,7 @@ package "① 앨범 검색" {
     [MusicBrainzAlbumRepository] as MBR
   }
 
-  node "MusicBrainz API" as MB
+  node "mb_album 테이블\n(MusicBrainz 데이터 사전 적재)" as MB
 
 }
 
@@ -272,8 +337,7 @@ RF --> API1 : 앨범 검색 요청
 API1 --> MBC
 MBC --> MBS
 MBS --> MBR
-MBR --> MB : 검색
-MB --> MBR : 결과 반환
+MBR --> MB : SELECT (mb_album)
 MBR --> MBS
 MBS --> MBC
 MBC --> API1 : 앨범 목록 반환
@@ -297,7 +361,7 @@ AIC --> RR : POST /recommend (비동기)
       <thead><tr><th>컴포넌트</th><th>역할</th><th>비고</th></tr></thead>
       <tbody>
         <tr><td><code>WriteReviewPage</code></td><td>감상문 작성 진입점</td><td>제출 후 /recommend/:id로 이동</td></tr>
-        <tr><td><code>ReviewForm</code></td><td>앨범 검색 드롭다운 + 감상문 입력 폼</td><td>MusicBrainz API 프록시 호출</td></tr>
+        <tr><td><code>ReviewForm</code></td><td>앨범 검색 드롭다운 + 감상문 입력 폼</td><td>자체 DB mb_album 테이블 조회</td></tr>
         <tr><td><code>UserReviewController</code></td><td>감상문 저장 요청 수신</td><td>POST /api/user-reviews</td></tr>
         <tr><td><code>UserReviewService</code></td><td>DB 저장 후 추천 이벤트 발행</td><td>트랜잭션 커밋 후 이벤트</td></tr>
         <tr><td><code>RecommendationEventListener</code></td><td>이벤트 수신 후 FastAPI 호출</td><td>비동기 처리 (@Async)</td></tr>
@@ -312,93 +376,229 @@ AIC --> RR : POST /recommend (비동기)
   <div class="panel" data-panel="flow02">
     <h2>플로우 02 — AI 추천 처리 + Polling</h2>
     <p>FastAPI가 임베딩 생성 → 취향 벡터 블렌딩 → pgvector 유사도 검색 → 재순위 → 추천 사유 생성 → Spring 콜백하는 플로우. 프론트는 polling으로 상태를 확인한다.</p>
+
+    <!-- ══ 2-A. 추천 요청 ══ -->
+    <h3>2-A. 추천 요청 + 콜백</h3>
+    <p>감상문 저장 직후 Spring이 FastAPI에 비동기로 추천을 요청하고, FastAPI가 파이프라인을 완료한 뒤 Spring에 콜백하는 흐름</p>
+
+    <!-- 2-A ① React -->
+    <div class="layer-label">① React (브라우저)</div>
     <div class="diagram-wrap">
       <pre class="plantuml">
 @startuml
 skinparam componentStyle rectangle
 skinparam backgroundColor #FAFAFA
-top to bottom direction
+left to right direction
+[ReviewBasedRecommendPage\n/recommend/:id] as RBRP
+[RecommendationCard] as RC
+[config/polling.ts] as POL
+[lib/api.ts] as API
+RBRP --> POL : polling 인터벌·종료 조건 설정
+RBRP --> API : polling — GET /api/user-reviews/:id 주기적 호출
+RBRP --> RC : status=COMPLETED 이면 추천 앨범 카드 표시
+@enduml
+      </pre>
+    </div>
 
-package "React" {
-  [ReviewBasedRecommendPage\n/recommend/:id] as RBRP
-  [RecommendationCard] as RC
-  [RetryButton] as RB
-  [config/polling.ts] as POL
-  [lib/api.ts] as API
-}
+    <div class="layer-arrow">↓ GET /api/user-reviews/:id (polling) &nbsp;|&nbsp; ↑ 상태/결과 반환</div>
 
-package "Spring Boot" {
+    <!-- 2-A ② Spring Boot -->
+    <div class="layer-label">② Spring Boot :8080</div>
+    <div class="diagram-wrap">
+      <pre class="plantuml">
+@startuml
+skinparam componentStyle rectangle
+skinparam backgroundColor #FAFAFA
+left to right direction
+
+actor "React\n(브라우저)" as REACT #line.dashed
+actor "FastAPI\n:8000" as FASTAPI #line.dashed
+
+package "Spring Boot :8080" {
   [UserReviewController\nGET /api/user-reviews/:id] as URC
-  [RecommendAlbumController\nPOST /recommendations\nPOST /retry] as RAC
+  [RecommendAlbumController\nPOST /api/user-reviews/{reviewId}/recommendations] as RAC
   [RecommendAlbumService] as RAS
   [UserReviewRepository] as URR
   [RecommendAlbumRepository] as RAR
 }
 
-package "FastAPI" {
-
-  package "1. 진입" {
-    [recommend_router\nPOST /recommend] as RR
-    [RecommendationService] as RS
-  }
-
-  package "2. 임베딩 + 취향 벡터" {
-    [EmbeddingService] as ES
-    [TasteVectorService\n감상문 60% + 개인화 40%] as TVS
-    [UserReviewEmbeddingRepository] as URER
-    [UserListenedAlbumRepository] as ULAR
-  }
-
-  package "3. 유사도 검색 + 재순위" {
-    [AlbumEmbeddingRepository\nmatch_albums() pgvector] as AER
-    [UserTasteMetadataRepository] as UTMR
-    [AlbumMetadataRepository] as AMR
-    [RecommendationRerankService\n벡터 80% + 메타 20%] as RRNK
-  }
-
-  package "4. 추천 사유 + 콜백" {
-    [RecommendationReasonService\nasyncio.gather 병렬] as RRS
-    [SpringCallbackClient] as SCC
-  }
-
-}
-
-node "OpenAI API" as OAI
 node "PostgreSQL" as DB
 
-RBRP --> RC
-RBRP --> RB
-RBRP --> POL
-RBRP --> API : polling
-API --> URC : GET /api/user-reviews/:id
-URC --> URR
-URR --> DB : 상태 조회
+REACT ..> URC : polling 요청
+FASTAPI ..> RAC : 추천 결과 콜백
 
-RR ..> RS : BackgroundTask
-RS --> ES
-ES --> OAI : Embedding
-RS --> URER
-RS --> ULAR
-URER --> DB
-ULAR --> DB
-RS --> TVS
-TVS --> RS : 취향 벡터
-RS --> AER
-AER --> DB : match_albums()
-RS --> UTMR
-UTMR --> DB
-RS --> RRNK
-RS --> AMR
-AMR --> DB
-RS --> RRS
-RRS --> OAI : Chat (추천 사유)
-RS --> SCC
-SCC --> RAC : POST /recommendations
-RAC --> RAS
+URC --> URR : 상태 조회 후 polling 응답
+RAC --> RAS : FastAPI 콜백 수신
 RAS --> RAR
 RAR --> DB : INSERT recommend_album
 RAS --> URR
-URR --> DB : UPDATE COMPLETED
+URR --> DB : UPDATE COMPLETED / FAILED
+@enduml
+      </pre>
+    </div>
+
+    <div class="layer-arrow">↓ POST /recommend (비동기) &nbsp;|&nbsp; ↑ POST /{reviewId}/recommendations (콜백)</div>
+
+    <!-- 2-A ③ FastAPI -->
+    <div class="layer-label">③ FastAPI :8000</div>
+
+    <div class="layer-sub-label">3-1. 진입</div>
+    <div class="diagram-wrap">
+      <pre class="plantuml">
+@startuml
+skinparam componentStyle rectangle
+skinparam backgroundColor #FAFAFA
+left to right direction
+[recommend_router\nPOST /recommend] as RR
+[RecommendationService] as RS
+RR ..> RS : BackgroundTask — 202 즉시 응답 후 비동기 처리
+@enduml
+      </pre>
+    </div>
+
+    <div class="layer-arrow-inner">↓</div>
+
+    <div class="layer-sub-label">3-2. 임베딩 + 취향 벡터</div>
+    <div class="diagram-wrap">
+      <pre class="plantuml">
+@startuml
+skinparam componentStyle rectangle
+skinparam backgroundColor #FAFAFA
+left to right direction
+[RecommendationService] as RS
+[EmbeddingService] as ES
+[TasteVectorService\n감상문 60% + 개인화 40%] as TVS
+[UserReviewEmbeddingRepository] as URER
+[UserListenedAlbumRepository] as ULAR
+node "OpenAI API" as OAI
+node "PostgreSQL" as DB
+RS --> ES
+ES --> OAI : 감상문 텍스트 임베딩
+RS --> URER
+RS --> ULAR
+URER --> DB : 기존 감상문 임베딩 조회
+ULAR --> DB : 감상 이력 조회
+RS --> TVS
+TVS --> RS : 취향 벡터 (감상문 60% + 이력 40%)
+@enduml
+      </pre>
+    </div>
+
+    <div class="layer-arrow-inner">↓</div>
+
+    <div class="layer-sub-label">3-3. 유사도 검색 + 재순위</div>
+    <div class="diagram-wrap">
+      <pre class="plantuml">
+@startuml
+skinparam componentStyle rectangle
+skinparam backgroundColor #FAFAFA
+left to right direction
+[RecommendationService] as RS
+[AlbumEmbeddingRepository\nmatch_albums() pgvector] as AER
+[UserTasteMetadataRepository] as UTMR
+[AlbumMetadataRepository] as AMR
+[RecommendationRerankService\n벡터 80% + 메타 20%] as RRNK
+node "PostgreSQL" as DB
+RS --> AER
+AER --> DB : match_albums() — 상위 30개 후보
+RS --> UTMR
+UTMR --> DB : 사용자 취향 메타 조회
+RS --> AMR
+AMR --> DB : 앨범 메타 조회
+RS --> RRNK : 재순위 (artist/genre/era 가산점)
+@enduml
+      </pre>
+    </div>
+
+    <div class="layer-arrow-inner">↓</div>
+
+    <div class="layer-sub-label">3-4. 추천 사유 + 콜백</div>
+    <div class="diagram-wrap">
+      <pre class="plantuml">
+@startuml
+skinparam componentStyle rectangle
+skinparam backgroundColor #FAFAFA
+left to right direction
+[RecommendationService] as RS
+[RecommendationReasonService\nasyncio.gather 병렬] as RRS
+[SpringCallbackClient] as SCC
+node "OpenAI API" as OAI
+RS --> RRS
+RRS --> OAI : Chat — top-k 추천 사유 병렬 생성
+RS --> SCC : 결과 전달
+SCC --> OAI
+@enduml
+      </pre>
+    </div>
+
+    <!-- ══ 2-B. 재시도 ══ -->
+    <h3 style="margin-top:48px">2-B. 재시도 (FAILED → PENDING)</h3>
+    <p>추천이 FAILED 상태일 때 사용자가 재시도 버튼을 누르면, Spring이 상태를 PENDING으로 되돌리고 FastAPI에 다시 추천을 요청하는 흐름</p>
+
+    <!-- 2-B ① React -->
+    <div class="layer-label">① React (브라우저)</div>
+    <div class="diagram-wrap">
+      <pre class="plantuml">
+@startuml
+skinparam componentStyle rectangle
+skinparam backgroundColor #FAFAFA
+left to right direction
+[ReviewBasedRecommendPage\n/recommend/:id] as RBRP
+[RetryButton] as RB
+[lib/api.ts] as API
+RBRP --> RB : status=FAILED 이면 재시도 버튼 표시
+RB --> API : POST /api/user-reviews/:id/retry
+@enduml
+      </pre>
+    </div>
+
+    <div class="layer-arrow">↓ POST /api/user-reviews/:id/retry</div>
+
+    <!-- 2-B ② Spring Boot -->
+    <div class="layer-label">② Spring Boot :8080</div>
+    <div class="diagram-wrap">
+      <pre class="plantuml">
+@startuml
+skinparam componentStyle rectangle
+skinparam backgroundColor #FAFAFA
+left to right direction
+
+actor "React\n(브라우저)" as REACT #line.dashed
+
+package "Spring Boot :8080" {
+  [UserReviewController\nPOST /api/user-reviews/:id/retry] as URC
+  [UserReviewService] as URS
+  [RecommendationEventListener\n@Async] as EL
+  [AiRecommendationClient] as AIC
+  [UserReviewRepository] as URR
+}
+
+node "PostgreSQL" as DB
+
+REACT ..> URC : 재시도 요청
+
+URC --> URS
+URS --> URR
+URR --> DB : UPDATE PENDING
+URS ..> EL : RecommendationRequestEvent 재발행
+EL --> AIC
+@enduml
+      </pre>
+    </div>
+
+    <div class="layer-arrow">↓ POST /recommend (비동기 재요청) &nbsp;|&nbsp; ↑ POST /{reviewId}/recommendations (콜백 — 2-A와 동일)</div>
+
+    <!-- 2-B ③ FastAPI -->
+    <div class="layer-label">③ FastAPI :8000</div>
+    <div class="diagram-wrap">
+      <pre class="plantuml">
+@startuml
+skinparam componentStyle rectangle
+skinparam backgroundColor #FAFAFA
+left to right direction
+[recommend_router\nPOST /recommend] as RR
+[RecommendationService] as RS
+RR ..> RS : BackgroundTask — 2-A 파이프라인과 동일하게 실행
 @enduml
       </pre>
     </div>
@@ -592,6 +792,494 @@ CRR --> DB
       </tbody>
     </table>
   </div>
+
+  <!-- ── 플로우 05 ── -->
+  <div class="panel" data-panel="flow05">
+    <h2>플로우 05 — AllAboutJazz 데이터 파이프라인</h2>
+    <p>Airflow 3-DAG 구조가 AllAboutJazz 리뷰 수집, GPT 요약, 임베딩 저장을 처리하고 추천 서비스가 조회할 데이터셋을 완성하는 플로우</p>
+
+    <div class="sub-tabs" role="tablist">
+      <button class="sub-tab active" data-sub-tab="flow05-overview">전체 연결</button>
+      <button class="sub-tab" data-sub-tab="flow05-dag1">DAG 1 — 크롤링</button>
+      <button class="sub-tab" data-sub-tab="flow05-dag2">DAG 2 — GPT 요약</button>
+      <button class="sub-tab" data-sub-tab="flow05-dag3">DAG 3 — 임베딩</button>
+    </div>
+
+    <!-- 전체 연결 -->
+    <div class="sub-panel active" data-sub-panel="flow05-overview">
+    <div class="diagram-wrap">
+      <pre class="plantuml">
+@startuml
+skinparam componentStyle rectangle
+skinparam backgroundColor #FAFAFA
+left to right direction
+
+actor 운영자
+
+node "AllAboutJazz\n(외부)" as AAJ
+node "OpenAI Batch API\n(외부)" as OAI
+node "Slack Webhook\n(외부)" as SL
+
+package "Airflow 2.8\nCeleryExecutor" {
+  package "DAG 1\n1_crawl_dag.py" {
+    [URL 수집 Task] as URLT
+    [Crawl Job 생성 Task] as CJT
+    [Playwright 크롤링 Task] as PWT
+    [GPT Batch 제출 Task] as GBT
+    [TriggerDagRunOperator\n-> DAG 2] as TR2
+  }
+
+  package "DAG 2\n2_summary_dag.py" {
+    [GPT Batch Sensor\nmode=reschedule] as GBS
+    [GPT 결과 처리 Task] as GPTP
+    [Embedding Batch 제출 Task] as EBT
+    [TriggerDagRunOperator\n-> DAG 3] as TR3
+  }
+
+  package "DAG 3\n3_embedding_vector_dag.py" {
+    [Embedding Batch Sensor\nmode=reschedule] as EBS
+    [Embedding 결과 처리 Task] as EMBP
+    [Vector 저장 Task] as VST
+    [Slack 알림 Task] as SLT
+  }
+}
+
+package "pipeline_services" {
+  [URLCollectorService] as UCS
+  [CrawlJobManager] as CJM
+  [ReviewCrawlerService] as RCS
+  [OpenAIService] as OAS
+  [GptResultProcessor] as GRP
+  [SupabaseService] as SBS
+  [SlackService] as SLS
+  [exceptions\nRetryableError / PermanentError] as EXC
+}
+
+database "Supabase PostgreSQL" {
+  [pipeline_batches] as PB
+  [crawl_targets] as CT
+  [crawl_jobs] as CJ
+  [allthatjazz_raw] as RAW
+  [processed_summary] as PS
+  [processing_jobs] as PJ
+  [embedding_vectors] as EV
+  [error_history] as EH
+  [ai_models] as AIM
+  [api_usage_logs] as AUL
+}
+
+package "FastAPI 추천 서비스" {
+  [AlbumEmbeddingRepository\nmatch_albums()] as AER
+  [AlbumMetadataRepository] as AMR
+  [RecommendationService] as RS
+}
+
+운영자 --> URLT : 수동 트리거
+
+URLT --> UCS
+UCS --> AAJ : 리뷰 URL 수집
+UCS --> SBS
+SBS --> CT : URL upsert
+
+CJT --> CJM
+CJM --> SBS
+SBS --> PB : batch 생성/조회
+SBS --> CJ : crawl job 생성
+
+PWT --> RCS
+RCS --> AAJ : Playwright 요청
+RCS --> SBS
+SBS --> RAW : 원문 저장
+SBS --> CJ : success / failed 갱신
+SBS --> EH : item 실패 기록
+RCS ..> EXC : 예외 분류
+
+GBT --> OAS
+OAS --> OAI : GPT Summary Batch 제출
+OAS --> SBS
+SBS --> PJ : stage=gpt 기록
+TR2 --> GBS : batch_id 전달
+
+GBS --> OAS
+OAS --> OAI : Batch 상태 조회
+GPTP --> GRP
+GRP --> SBS
+SBS --> PS : 요약 결과 저장
+SBS --> AUL : API 사용량 기록
+
+EBT --> OAS
+OAS --> OAI : Embedding Batch 제출
+SBS --> PJ : stage=embedding 기록
+TR3 --> EBS : batch_id 전달
+
+EBS --> OAS
+OAS --> OAI : Batch 상태 조회
+EMBP --> SBS
+SBS --> EV : embedding upsert
+SBS --> AIM : model 참조
+VST --> PB : 완료 상태 갱신
+SLT --> SLS
+SLS --> SL : 완료/실패 알림
+
+RS --> AER
+AER --> EV : 벡터 유사도 검색
+RS --> AMR
+AMR --> PS : 요약/메타 조회
+@enduml
+      </pre>
+    </div>
+    </div><!-- /sub-panel flow05-overview -->
+
+    <!-- DAG 1 -->
+    <div class="sub-panel" data-sub-panel="flow05-dag1">
+    <h3>DAG 1</h3>
+
+    <!-- 1. URL 수집 -->
+    <h4 style="margin: 24px 0 6px; font-size: 14px; color: #1f2933;">1. URL 수집 (check_pending_batch → collect_and_register_urls)</h4>
+    <p style="font-size: 13px; color: #5f6b7a; margin: 0 0 10px;">운영자가 DAG를 트리거하면 미완료 batch 여부를 확인하고, 신규 실행 시 AllAboutJazz 목록 페이지에서 리뷰 URL을 수집해 DB에 등록하는 단계</p>
+
+    <div class="layer-label">① Airflow 태스크</div>
+    <div class="diagram-wrap">
+      <pre class="plantuml">
+@startuml
+skinparam componentStyle rectangle
+skinparam backgroundColor #FAFAFA
+left to right direction
+actor 운영자
+[check_pending_batch] as CHECK
+[resume_pending_batch] as RESUME
+[create_batch] as CREATE
+[collect_and_register_urls] as COLLECT
+[update_page_variable] as PAGE
+운영자 --> CHECK
+CHECK --> RESUME : 미완료 batch 있음
+CHECK --> CREATE : 신규 실행
+CREATE --> COLLECT
+COLLECT --> PAGE : 신규 URL 등록 후\ncurrent_start_page 갱신
+@enduml
+      </pre>
+    </div>
+
+    <div class="layer-arrow">↓ URLCollectorService 호출 &nbsp;|&nbsp; ↑ 수집 결과 반환</div>
+
+    <div class="layer-label">② pipeline_services</div>
+    <div class="diagram-wrap">
+      <pre class="plantuml">
+@startuml
+skinparam componentStyle rectangle
+skinparam backgroundColor #FAFAFA
+left to right direction
+actor "Airflow Task\n(collect_and_register_urls)" as TASK #line.dashed
+[URLCollectorService] as URLS
+[SupabaseService] as SBS
+node "AllAboutJazz\n(외부)" as AAJ
+TASK --> URLS
+URLS --> AAJ : 목록 페이지 URL 수집
+URLS --> SBS
+@enduml
+      </pre>
+    </div>
+
+    <div class="layer-arrow">↓ upsert / INSERT</div>
+
+    <div class="layer-label">③ DB</div>
+    <div class="diagram-wrap">
+      <pre class="plantuml">
+@startuml
+skinparam componentStyle rectangle
+skinparam backgroundColor #FAFAFA
+left to right direction
+actor "SupabaseService" as SBS #line.dashed
+database "PostgreSQL" {
+  [pipeline_batches] as PB
+  [crawl_targets] as CT
+  [crawl_jobs] as CJ
+}
+SBS --> PB : batch 생성 (CREATE) 또는 조회 (RESUME)
+SBS --> CT : URL upsert
+SBS --> CJ : crawl_jobs 등록
+@enduml
+      </pre>
+    </div>
+
+    <!-- 2. 크롤링 -->
+    <h4 style="margin: 40px 0 6px; font-size: 14px; color: #1f2933;">2. 크롤링 (merge_collect_result → crawl_details)</h4>
+    <p style="font-size: 13px; color: #5f6b7a; margin: 0 0 10px;">등록된 crawl_job을 기반으로 Playwright가 AllAboutJazz 리뷰 상세 페이지를 크롤링하고 원문을 저장하는 단계. 성공률이 80% 미만이면 Slack 알림을 발송한다.</p>
+
+    <div class="layer-label">① Airflow 태스크</div>
+    <div class="diagram-wrap">
+      <pre class="plantuml">
+@startuml
+skinparam componentStyle rectangle
+skinparam backgroundColor #FAFAFA
+left to right direction
+[merge_collect_result] as MERGE
+[crawl_details] as CRAWL
+node "Slack Webhook\n(외부)" as SL
+MERGE --> CRAWL
+CRAWL --> SL : 성공률 80% 미만 알림
+@enduml
+      </pre>
+    </div>
+
+    <div class="layer-arrow">↓ CrawlJobManager → ReviewCrawlerService 호출</div>
+
+    <div class="layer-label">② pipeline_services</div>
+    <div class="diagram-wrap">
+      <pre class="plantuml">
+@startuml
+skinparam componentStyle rectangle
+skinparam backgroundColor #FAFAFA
+left to right direction
+actor "Airflow Task\n(crawl_details)" as TASK #line.dashed
+[CrawlJobManager] as CJM
+[ReviewCrawlerService] as RCS
+[SupabaseService] as SBS
+[SlackService] as SLS
+[exceptions\nRetryableError / PermanentError] as EXC
+node "AllAboutJazz\n(외부)" as AAJ
+TASK --> CJM
+CJM --> RCS
+RCS --> AAJ : Playwright 리뷰 상세 크롤링
+RCS ..> EXC : 예외 분류
+CJM --> SBS
+CJM --> SLS : 성공률 알림
+@enduml
+      </pre>
+    </div>
+
+    <div class="layer-arrow">↓ INSERT / UPDATE</div>
+
+    <div class="layer-label">③ DB</div>
+    <div class="diagram-wrap">
+      <pre class="plantuml">
+@startuml
+skinparam componentStyle rectangle
+skinparam backgroundColor #FAFAFA
+left to right direction
+actor "SupabaseService" as SBS #line.dashed
+database "PostgreSQL" {
+  [allthatjazz_raw] as RAW
+  [crawl_jobs] as CJ
+  [error_history] as EH
+}
+SBS --> RAW : 원문 저장
+SBS --> CJ : success / failed 갱신
+SBS --> EH : item 실패 기록 (PermanentError)
+@enduml
+      </pre>
+    </div>
+
+    <!-- 3. GPT Batch 제출 -->
+    <h4 style="margin: 40px 0 6px; font-size: 14px; color: #1f2933;">3. GPT Batch 제출 (submit_gpt_batch → trigger_summary_dag)</h4>
+    <p style="font-size: 13px; color: #5f6b7a; margin: 0 0 10px;">크롤링된 원문을 OpenAI Batch API에 GPT 요약 batch로 제출하고, batch_id를 DAG 2에 전달해 트리거하는 단계</p>
+
+    <div class="layer-label">① Airflow 태스크</div>
+    <div class="diagram-wrap">
+      <pre class="plantuml">
+@startuml
+skinparam componentStyle rectangle
+skinparam backgroundColor #FAFAFA
+left to right direction
+[submit_gpt_batch] as GPT
+[trigger_summary_dag] as TRIGGER
+node "Airflow DAG 2\n2_summary_dag.py" as DAG2
+GPT --> TRIGGER
+TRIGGER --> DAG2 : batch_id, openai_batch_id 전달
+@enduml
+      </pre>
+    </div>
+
+    <div class="layer-arrow">↓ OpenAIService 호출</div>
+
+    <div class="layer-label">② pipeline_services</div>
+    <div class="diagram-wrap">
+      <pre class="plantuml">
+@startuml
+skinparam componentStyle rectangle
+skinparam backgroundColor #FAFAFA
+left to right direction
+actor "Airflow Task\n(submit_gpt_batch)" as TASK #line.dashed
+[OpenAIService] as OAS
+[SupabaseService] as SBS
+node "OpenAI Batch API\n(외부)" as OAI
+TASK --> SBS : GPT 대상 raw 조회
+TASK --> OAS
+OAS --> OAI : batch file upload\nGPT batch create
+OAS --> SBS
+@enduml
+      </pre>
+    </div>
+
+    <div class="layer-arrow">↓ INSERT</div>
+
+    <div class="layer-label">③ DB</div>
+    <div class="diagram-wrap">
+      <pre class="plantuml">
+@startuml
+skinparam componentStyle rectangle
+skinparam backgroundColor #FAFAFA
+left to right direction
+actor "SupabaseService" as SBS #line.dashed
+database "PostgreSQL" {
+  [processing_jobs] as PJ
+}
+SBS --> PJ : stage=gpt, openai_batch_id 기록
+@enduml
+      </pre>
+    </div>
+
+    </div><!-- /sub-panel flow05-dag1 -->
+
+    <!-- DAG 2 -->
+    <div class="sub-panel" data-sub-panel="flow05-dag2">
+    <h3>DAG 2 — GPT 결과 처리 + Embedding Batch 제출</h3>
+    <div class="diagram-wrap">
+      <pre class="plantuml">
+@startuml
+skinparam componentStyle rectangle
+skinparam backgroundColor #FAFAFA
+left to right direction
+
+node "OpenAI Batch API\n(외부)" as OAI
+node "Airflow DAG 3\n3_embedding_vector_dag.py" as DAG3
+
+package "Airflow DAG 2\n2_summary_dag.py" {
+  [wait_for_gpt_completion\nSensor mode=reschedule] as WAIT
+  [process_gpt_result] as PROCESS
+  [submit_embedding_batch] as SUBMIT
+  [trigger_embedding_vector_dag] as TRIGGER
+}
+
+package "pipeline_services" {
+  [OpenAIService] as OAS
+  [GptResultProcessor] as GRP
+  [SupabaseService] as SBS
+  [SlackService] as SLS
+}
+
+database "PostgreSQL" {
+  [pipeline_batches] as PB
+  [crawl_jobs] as CJ
+  [allthatjazz_raw] as RAW
+  [processed_summary] as PS
+  [processing_jobs] as PJ
+  [api_usage_logs] as AUL
+  [error_history] as EH
+}
+
+WAIT --> SBS : stage=gpt\nprocessing_job 조회
+WAIT --> OAS
+OAS --> OAI : GPT batch 상태 조회
+OAS --> SBS
+SBS --> PJ : openai_status,\nprocessed_count 갱신
+WAIT --> SLS : Batch 실패/저성공률 알림
+
+WAIT --> PROCESS
+PROCESS --> SBS : completed GPT batch 조회
+PROCESS --> OAS
+OAS --> OAI : output file download
+PROCESS --> GRP
+GRP --> SBS
+SBS --> PS : GPT 요약 저장
+SBS --> PJ : parsing_status 갱신
+SBS --> AUL : GPT token 사용량 기록
+SBS --> EH : parsing 실패 기록
+
+PROCESS --> SUBMIT
+SUBMIT --> SBS
+SBS --> PB : batch_num -> batch_id
+SBS --> CJ : batch의 crawl_job 조회
+SBS --> RAW : raw_id 조회
+SBS --> PS : summary_text 조회
+SUBMIT --> OAS
+OAS --> OAI : embedding batch 제출
+OAS --> SBS
+SBS --> PJ : stage=embedding 기록
+SUBMIT --> TRIGGER
+TRIGGER --> DAG3 : batch_id,\nopenai_batch_id 전달
+@enduml
+      </pre>
+    </div>
+    </div><!-- /sub-panel flow05-dag2 -->
+
+    <!-- DAG 3 -->
+    <div class="sub-panel" data-sub-panel="flow05-dag3">
+    <h3>DAG 3 — Embedding 결과 처리 + pgvector 저장</h3>
+    <div class="diagram-wrap">
+      <pre class="plantuml">
+@startuml
+skinparam componentStyle rectangle
+skinparam backgroundColor #FAFAFA
+left to right direction
+
+node "OpenAI Batch API\n(외부)" as OAI
+
+package "Airflow DAG 3\n3_embedding_vector_dag.py" {
+  [wait_for_embedding_completion\nSensor mode=reschedule] as WAIT
+  [process_embedding_result] as PROCESS
+}
+
+package "pipeline_services" {
+  [OpenAIService] as OAS
+  [SupabaseService] as SBS
+}
+
+database "PostgreSQL" {
+  [pipeline_batches] as PB
+  [processing_jobs] as PJ
+  [processed_summary] as PS
+  [embedding_vectors] as EV
+  [ai_models] as AIM
+  [api_usage_logs] as AUL
+}
+
+package "FastAPI 추천 서비스" {
+  [RecommendationService] as RS
+  [AlbumEmbeddingRepository\nmatch_albums()] as AER
+  [AlbumMetadataRepository] as AMR
+}
+
+WAIT --> SBS : stage=embedding\nprocessing_job 조회
+WAIT --> OAS
+OAS --> OAI : embedding batch 상태 조회
+OAS --> SBS
+SBS --> PJ : openai_status,\nprocessed_count 갱신
+
+WAIT --> PROCESS
+PROCESS --> SBS : completed embedding batch 조회
+PROCESS --> OAS
+OAS --> OAI : output file download
+OAS --> PROCESS : embedding results parse
+PROCESS --> SBS
+SBS --> EV : save_embedding_metadata\npgvector 저장
+SBS --> AIM : model_id 참조
+SBS --> PJ : parsing_status 갱신
+SBS --> AUL : embedding token 사용량 기록
+
+RS --> AER
+AER --> EV : 벡터 유사도 검색
+RS --> AMR
+AMR --> PS : 요약/메타 조회
+@enduml
+      </pre>
+    </div>
+    </div><!-- /sub-panel flow05-dag3 -->
+
+    <table>
+      <thead><tr><th>컴포넌트</th><th>역할</th><th>비고</th></tr></thead>
+      <tbody>
+        <tr><td><code>1_crawl_dag.py</code></td><td>URL 수집, 크롤링 job 생성, Playwright 크롤링, GPT Batch 제출</td><td>크롤링 결과는 <code>allthatjazz_raw</code>, Batch ID는 <code>processing_jobs</code>에 저장</td></tr>
+        <tr><td><code>2_summary_dag.py</code></td><td>GPT Batch 완료 대기, 요약 결과 저장, Embedding Batch 제출</td><td>Sensor는 <code>mode=reschedule</code>로 worker 슬롯 점유를 줄임</td></tr>
+        <tr><td><code>3_embedding_vector_dag.py</code></td><td>Embedding Batch 완료 대기, 벡터 저장, 완료 알림</td><td><code>embedding_vectors</code>를 추천 서비스의 검색 입력으로 제공</td></tr>
+        <tr><td><code>pipeline_services</code></td><td>DAG에서 호출하는 서비스 레이어</td><td>DAG 파일은 오케스트레이션만 담당하고 DB/API 로직은 서비스로 분리</td></tr>
+        <tr><td><code>SupabaseService</code></td><td>파이프라인 상태와 결과 저장소 접근</td><td>큰 payload는 XCom 대신 PostgreSQL에 저장</td></tr>
+        <tr><td><code>OpenAIService</code></td><td>GPT/Embedding Batch 제출과 상태 조회</td><td>Batch ID 선기록으로 재실행 시 중복 제출을 방지</td></tr>
+        <tr><td><code>error_history</code></td><td>크롤링/Batch 처리 실패 이력 저장</td><td><code>RetryableError</code>는 Airflow retry, <code>PermanentError</code>는 item 단위 기록</td></tr>
+        <tr><td><code>AlbumEmbeddingRepository</code></td><td>추천 서비스에서 파이프라인 산출 벡터 조회</td><td><code>match_albums()</code> 기반 pgvector 유사도 검색</td></tr>
+      </tbody>
+    </table>
+  </div>
 </main>
 
 <script>
@@ -601,6 +1289,16 @@ CRR --> DB
       const target = tab.dataset.tab;
       document.querySelectorAll(".tab").forEach(t => t.classList.toggle("active", t === tab));
       document.querySelectorAll(".panel").forEach(p => p.classList.toggle("active", p.dataset.panel === target));
+    });
+  });
+
+  // ── 중첩 탭 전환 ──
+  document.querySelectorAll(".sub-tab").forEach(tab => {
+    tab.addEventListener("click", () => {
+      const target = tab.dataset.subTab;
+      const parentPanel = tab.closest(".panel");
+      parentPanel.querySelectorAll(".sub-tab").forEach(t => t.classList.toggle("active", t === tab));
+      parentPanel.querySelectorAll(".sub-panel").forEach(p => p.classList.toggle("active", p.dataset.subPanel === target));
     });
   });
 
