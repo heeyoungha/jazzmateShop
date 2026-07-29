@@ -1,0 +1,37 @@
+---
+services:
+  airflow-standalone:
+    build:
+      context: .
+      dockerfile: Dockerfile.airflow
+    shm_size: '2gb'
+    env_file:
+      - ${ENV_FILE_PATH:-.env}
+    environment:
+      AIRFLOW__CORE__EXECUTOR: SequentialExecutor
+      AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
+      AIRFLOW_CONFIG: '/opt/airflow/pipeline/config/airflow.cfg'
+      PLAYWRIGHT_BROWSERS_PATH: '/home/airflow/.cache/ms-playwright'
+      PLAYWRIGHT_CHROMIUM_DISABLE_SANDBOX: '1'
+      PYTHONPATH: '/opt/airflow:/opt/airflow/pipeline:/opt/airflow/pipeline/dags'
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      CRAWLER_BASE_URL: ${CRAWLER_BASE_URL}
+      CRAWLER_REVIEWS_URL: ${CRAWLER_REVIEWS_URL}
+    entrypoint: ["/entrypoint-xvfb.sh"]
+    command: standalone
+    ports:
+      - "8081:8080"
+    volumes:
+      - ${AIRFLOW_PROJ_DIR:-.}/pipeline/dags:/opt/airflow/pipeline/dags
+      - ${AIRFLOW_PROJ_DIR:-.}/logs:/opt/airflow/logs
+      - ${AIRFLOW_PROJ_DIR:-.}/pipeline/config:/opt/airflow/pipeline/config
+      - ${AIRFLOW_PROJ_DIR:-.}/plugins:/opt/airflow/plugins
+      - ${AIRFLOW_PROJ_DIR:-.}/pipeline/pipeline_services:/opt/airflow/pipeline/pipeline_services
+      - ${AIRFLOW_PROJ_DIR:-.}/data:/opt/airflow/data
+      - ${AIRFLOW_PROJ_DIR:-.}/data:/data
+      - airflow-standalone-db:/opt/airflow  # SQLite 데이터 유지
+    user: "${AIRFLOW_UID:-50000}:0"
+
+volumes:
+  airflow-standalone-db:
