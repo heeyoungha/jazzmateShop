@@ -25,8 +25,7 @@ logger = logging.getLogger(__name__)
         'on_failure_callback': slack_alert,
     },
     description='URL 수집 → 크롤링 → GPT Batch 제출',
-    schedule_interval=None, 
-    # schedule="*/30 * * * *", 
+    schedule_interval="0 * * * *",  # 매시 정각 (1시간마다). DAG1은 ~20분 소요 + max_active_runs=1이라 겹치지 않음
     start_date=datetime(2026, 2, 28), # "언제부터 이 DAG를 실행할 수 있는가"를 판단하는 기준점. 반드시 필요
     catchup=False, # 이전 실행 데이터 무시하고 최신 데이터만 처리. 테스트 중에는 DAG를 자주 껐다 켜기 때문에 catchup=False가 사실상 필수
 )
@@ -99,8 +98,40 @@ def crawl_dag():
 
         db = SupabaseService()
 
+        def _cleanup_orphan_chrome():
+            """
+            이전 실행에서 남은 orphan chromium 프로세스를 강제 종료한다.
+            이전 실행이 OOM으로 SIGKILL 되면 crawler.close()가 실행되지 못해 Chromium 프로세스가 좀비로 남은 경우 청소.
+            """
+            import subprocess
+            # -9: 좀비는 이미 SIGTERM에 반응하지 않았으므로 SIGKILL로 확실히 종료
+            # -f: 전체 커맨드라인 매칭 → chromium 렌더러/GPU/유틸리티 프로세스까지 포함
+            for pattern in ("chrome", "chromium"):
+                try:
+                    result = subprocess.run(
+                        ["pkill", "-9", "-f", pattern],
+                        capture_output=True,
+                        timeout=10,
+                    )
+                    # pkill exit code: 0=종료함, 1=대상 없음(정상), 그 외=오류
+                    # check=True를 쓰지 않는 이유: 좀비가 없으면(exit 1) 정상이므로
+                    # 예외로 크롤링을 중단시켜선 안 된다.
+                    if result.returncode == 0:
+                        logger.info(f"🧹 좀비 '{pattern}' 프로세스 청소 완료")
+                    elif result.returncode == 1:
+                        logger.debug(f"🧹 청소할 '{pattern}' 프로세스 없음 (정상)")
+                    else:
+                        logger.warning(
+                            f"⚠️ pkill '{pattern}' 비정상 종료 (code={result.returncode}): "
+                            f"{result.stderr.decode(errors='ignore')}"
+                        )
+                except Exception as e:
+                    # 청소 실패는 치명적이지 않다 — 로깅만 하고 크롤링은 계속 진행
+                    logger.warning(f"⚠️ 좀비 '{pattern}' 청소 실패 (무시하고 진행): {e}")
+
         # URL 수집
         async def _collect_urls(start, end):
+            _cleanup_orphan_chrome()
             crawler = PlaywrightJazzCrawler(crawler_config=CrawlerConfig.from_env())
             try:
                 await crawler.start()
