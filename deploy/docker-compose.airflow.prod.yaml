@@ -1,11 +1,19 @@
 ---
+# 운영서버(EC2) 전용 Airflow standalone compose
+# 로컬 개발용(../docker-compose.airflow.standalone.yaml)과 분리됨.
+#
+# 로컬과의 핵심 차이:
+#   - 코드(dags, pipeline_services)는 마운트하지 않고 "이미지에 구워진 것"을 사용한다.
+#     → 이미지 하나 = 배포 단위. CI/CD 일관성 확보.
+#   - 런타임 산출물(logs, data)과 SQLite DB만 볼륨으로 유지한다.
+#   - config, plugins는 아직 이미지에 없어서 당분간 마운트로 공급한다.
+#     (추후 Dockerfile에서 COPY하면 이 마운트도 제거 가능)
+#
+# 실행:
+#   docker compose -f deploy/docker-compose.airflow.prod.yaml up -d
 services:
   airflow-standalone:
-    # image: 이름을 고정 → 여기서 빌드한 이미지를 deploy/prod.yaml(운영)이 그대로 사용
     image: jazzmateshop-airflow-standalone:latest
-    build:
-      context: .
-      dockerfile: Dockerfile.airflow
     shm_size: '2gb'
     env_file:
       - ${ENV_FILE_PATH:-.env}
@@ -26,11 +34,10 @@ services:
     ports:
       - "8081:8080"
     volumes:
-      - ${AIRFLOW_PROJ_DIR:-.}/pipeline/dags:/opt/airflow/pipeline/dags
+      # 코드·설정(dags, pipeline_services, config)은 모두 이미지에 구워져 있으므로 마운트하지 않는다.
+      # → 이미지 하나가 완전한 배포 단위. 빈 폴더 마운트가 이미지를 가리는 사고를 원천 차단.
+      # 아래는 런타임 산출물과 DB만 유지.
       - ${AIRFLOW_PROJ_DIR:-.}/logs:/opt/airflow/logs
-      - ${AIRFLOW_PROJ_DIR:-.}/pipeline/config:/opt/airflow/pipeline/config
-      - ${AIRFLOW_PROJ_DIR:-.}/plugins:/opt/airflow/plugins
-      - ${AIRFLOW_PROJ_DIR:-.}/pipeline/pipeline_services:/opt/airflow/pipeline/pipeline_services
       - ${AIRFLOW_PROJ_DIR:-.}/data:/opt/airflow/data
       - ${AIRFLOW_PROJ_DIR:-.}/data:/data
       - airflow-standalone-db:/opt/airflow  # SQLite 데이터 유지

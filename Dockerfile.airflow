@@ -68,6 +68,10 @@ RUN python -m playwright install chromium
 # 프로젝트 모듈 복사
 COPY --chown=airflow:root pipeline/dags /opt/airflow/pipeline/dags
 COPY --chown=airflow:root pipeline/pipeline_services /opt/airflow/pipeline/pipeline_services
+COPY --chown=airflow:root pipeline/config /opt/airflow/pipeline/config
+# Airflow(UID 50000, GID 0)가 airflow.cfg에 기본값을 써넣을 수 있도록 그룹 쓰기 권한 부여
+# (원본이 -rw------- 라 컨테이너에서 쓰기 불가 → PermissionError 방지)
+RUN chmod -R g+rwX /opt/airflow/pipeline/config
 
 # Xvfb entrypoint 스크립트 복사
 USER root
