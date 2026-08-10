@@ -3,22 +3,45 @@
 # 로컬 개발용(../docker-compose.airflow.standalone.yaml)과 분리됨.
 #
 # 로컬과의 핵심 차이:
-#   - 코드(dags, pipeline_services)는 마운트하지 않고 "이미지에 구워진 것"을 사용한다.
-#     → 이미지 하나 = 배포 단위. CI/CD 일관성 확보.
-#   - 런타임 산출물(logs, data)과 SQLite DB만 볼륨으로 유지한다.
-#   - config, plugins는 아직 이미지에 없어서 당분간 마운트로 공급한다.
-#     (추후 Dockerfile에서 COPY하면 이 마운트도 제거 가능)
+#   - 코드·설정(dags, pipeline_services, config)은 마운트하지 않고 "이미지에 구워진 것"을 사용한다.
+#     (Dockerfile.airflow에서 COPY됨) → 이미지 하나 = 배포 단위. CI/CD 일관성 확보.
+#   - 런타임 산출물(logs, data)만 볼륨으로 유지한다.
+#
+# 메타DB:
+#   - SQLite → 전용 Postgres 컨테이너로 교체. Executor도 LocalExecutor.
+#   - 상주 컨테이너 2개(postgres + airflow-standalone).
+#     standalone이 내부에서 db migrate + admin 생성 + scheduler + webserver를 모두
+#     띄우므로 별도 init 컨테이너가 필요 없다.
 #
 # 실행:
 #   docker compose -f deploy/docker-compose.airflow.prod.yaml up -d
 services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: ${AIRFLOW_PG_USER:-airflow}
+      POSTGRES_PASSWORD: ${AIRFLOW_PG_PASSWORD:-airflow}
+      POSTGRES_DB: ${AIRFLOW_PG_DB:-airflow}
+    volumes:
+      - airflow-metadata-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "${AIRFLOW_PG_USER:-airflow}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
   airflow-standalone:
     image: jazzmateshop-airflow-standalone:latest
     shm_size: '2gb'
+    depends_on:
+      postgres:
+        condition: service_healthy
     env_file:
       - ${ENV_FILE_PATH:-.env}
     environment:
-      AIRFLOW__CORE__EXECUTOR: SequentialExecutor
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${AIRFLOW_PG_USER:-airflow}:${AIRFLOW_PG_PASSWORD:-airflow}@postgres:5432/${AIRFLOW_PG_DB:-airflow}
       AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
       AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
       AIRFLOW__CORE__DAGS_FOLDER: '/opt/airflow/pipeline/dags'
@@ -34,14 +57,13 @@ services:
     ports:
       - "8081:8080"
     volumes:
-      # 코드·설정(dags, pipeline_services, config)은 모두 이미지에 구워져 있으므로 마운트하지 않는다.
+      # 코드·설정(dags, pipeline_services, config)은 이미지에 구워져 있으므로 마운트하지 않는다.
       # → 이미지 하나가 완전한 배포 단위. 빈 폴더 마운트가 이미지를 가리는 사고를 원천 차단.
-      # 아래는 런타임 산출물과 DB만 유지.
+      # 아래는 런타임 산출물(logs, data)만 유지.
       - ${AIRFLOW_PROJ_DIR:-.}/logs:/opt/airflow/logs
       - ${AIRFLOW_PROJ_DIR:-.}/data:/opt/airflow/data
       - ${AIRFLOW_PROJ_DIR:-.}/data:/data
-      - airflow-standalone-db:/opt/airflow  # SQLite 데이터 유지
     user: "${AIRFLOW_UID:-50000}:0"
 
 volumes:
-  airflow-standalone-db:
+  airflow-metadata-db:

@@ -1,5 +1,26 @@
 ---
 services:
+  # ─────────────────────────────────────────────────────────────
+  # Airflow 메타데이터 DB (전용 Postgres 컨테이너)
+  # 앱 데이터(Supabase)와 물리적으로 격리 → 장애 범위 분리 + 커넥션 격리.
+  # 외부 포트를 열지 않으므로(호스트 노출 X) 내부 전용 크리덴셜은 기본값으로 충분.
+  # ─────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: ${AIRFLOW_PG_USER:-airflow}
+      POSTGRES_PASSWORD: ${AIRFLOW_PG_PASSWORD:-airflow}
+      POSTGRES_DB: ${AIRFLOW_PG_DB:-airflow}
+    volumes:
+      - airflow-metadata-db:/var/lib/postgresql/data
+    healthcheck:
+      # standalone이 DB에 붙기 전에 Postgres가 완전히 뜬 것을 보장
+      test: ["CMD", "pg_isready", "-U", "${AIRFLOW_PG_USER:-airflow}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
   airflow-standalone:
     # image: 이름을 고정 → 여기서 빌드한 이미지를 deploy/prod.yaml(운영)이 그대로 사용
     image: jazzmateshop-airflow-standalone:latest
@@ -7,10 +28,15 @@ services:
       context: .
       dockerfile: Dockerfile.airflow
     shm_size: '2gb'
+    depends_on:
+      postgres:
+        condition: service_healthy
     env_file:
       - ${ENV_FILE_PATH:-.env}
     environment:
-      AIRFLOW__CORE__EXECUTOR: SequentialExecutor
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      # 메타DB를 전용 Postgres 컨테이너로 지정 (env가 airflow.cfg의 sqlite 값을 덮어씀)
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${AIRFLOW_PG_USER:-airflow}:${AIRFLOW_PG_PASSWORD:-airflow}@postgres:5432/${AIRFLOW_PG_DB:-airflow}
       AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
       AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
       AIRFLOW__CORE__DAGS_FOLDER: '/opt/airflow/pipeline/dags'
@@ -33,8 +59,9 @@ services:
       - ${AIRFLOW_PROJ_DIR:-.}/pipeline/pipeline_services:/opt/airflow/pipeline/pipeline_services
       - ${AIRFLOW_PROJ_DIR:-.}/data:/opt/airflow/data
       - ${AIRFLOW_PROJ_DIR:-.}/data:/data
-      - airflow-standalone-db:/opt/airflow  # SQLite 데이터 유지
+      # 메타DB가 Postgres로 나갔으므로 /opt/airflow 통짜 볼륨은 제거.
+      # (빈 볼륨이 이미지에 구운 dags/config를 가리는 사고 방지)
     user: "${AIRFLOW_UID:-50000}:0"
 
 volumes:
-  airflow-standalone-db:
+  airflow-metadata-db:
