@@ -64,7 +64,7 @@ def crawl_dag():
             'job_ids': pending['job_ids'],
         }
 
-    @task(task_id='create_batch')
+    @task(task_id='create_batch', execution_timeout=timedelta(minutes=2))
     def create_batch() -> Dict[str, Any]:
         from pipeline_services import SupabaseService
         from airflow.operators.python import get_current_context
