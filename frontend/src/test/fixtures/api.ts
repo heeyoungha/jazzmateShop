@@ -90,11 +90,10 @@ export function criticsPage({ number = 0, last = false } = {}) {
         reviewSummary: "정교한 앙상블과 절제된 긴장감이 돋보이는 리뷰입니다.",
       },
     ],
-    totalElements: last ? 2 : 12,
-    totalPages: last ? 2 : 3,
-    number,
-    size: 10,
-    last,
+    page: {
+      number,
+      totalPages: last ? number + 1 : number + 2,
+    },
   };
 }
 

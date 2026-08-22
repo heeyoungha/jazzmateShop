@@ -12,13 +12,20 @@ interface CriticsReview {
   reviewSummary: string;
 }
 
+interface PageMeta {
+  number: number;
+  totalPages: number;
+}
+
 interface PageResponse {
   content: CriticsReview[];
+  page: PageMeta;
+}
+
+interface PageCursor {
   number: number;
   last: boolean;
 }
-
-type PageCursor = Pick<PageResponse, "number" | "last">;
 
 export function CriticsReviewPage() {
   const navigate = useNavigate();
@@ -41,8 +48,10 @@ export function CriticsReviewPage() {
       }
       const json = (await res.json()) as PageResponse;
       setReviews((prev) => [...prev, ...json.content]);
-      cursorRef.current = { number: json.number, last: json.last };
-      setCursor({ number: json.number, last: json.last });
+      const { number, totalPages } = json.page;
+      const last = number >= totalPages - 1;
+      cursorRef.current = { number, last };
+      setCursor({ number, last });
       setError(null);
     } catch {
       setError("전문가 리뷰 목록을 불러오지 못했습니다.");
