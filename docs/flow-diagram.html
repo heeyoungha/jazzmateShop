@@ -287,6 +287,7 @@
     <button class="tab" data-tab="flow03">플로우 03 · 내 감상문 목록</button>
     <button class="tab" data-tab="flow04">플로우 04 · 전문가 리뷰</button>
     <button class="tab" data-tab="flow05">플로우 05 · 파이프라인</button>
+    <button class="tab" data-tab="flow06">플로우 06 · 데이터 품질 대시보드</button>
   </div>
 
   <!-- ── 플로우 01 ── -->
@@ -1493,6 +1494,211 @@ end note
         <tr><td>PostgreSQL</td><td>상태와 결과의 single source of truth</td><td>큰 payload는 XCom이 아니라 DB에 저장, DAG 간 전달은 <code>batch_id</code> 중심</td></tr>
         <tr><td>OpenAI Batch API</td><td>GPT 요약과 임베딩 비동기 처리</td><td>Batch ID를 <code>processing_jobs</code>에 먼저 기록해 중복 제출을 방지</td></tr>
         <tr><td>FastAPI 추천 서비스</td><td>파이프라인 산출물을 기반으로 추천 후보 검색</td><td><code>embedding_vectors</code>와 앨범/리뷰 메타데이터를 사용해 pgvector 유사도 검색 수행</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ── 플로우 06 ── -->
+  <div class="panel" data-panel="flow06">
+    <h2>플로우 06 — 데이터 품질 대시보드 (data_quality_visualizer.py)</h2>
+    <p>파이프라인(플로우 05)이 <code>allthatjazz_raw</code>에 <b>채운</b> 데이터를, 이 스크립트가 <b>사후 검사</b>한다. 전체 레코드를 로드해 필드별 결측률·완성도를 계산하고, 히트맵과 시계열 추이로 시각화한다. 즉 "데이터를 만드는 쪽"이 아니라 "만들어진 데이터가 믿을 만한지 측정하는 쪽"이다.</p>
+
+    <div style="margin:12px 0 4px;padding:12px 14px;background:#fff8e1;border:1px solid #f0d98c;border-radius:8px;">
+      <p style="margin:0;font-size:13px;color:#6b5b2e;"><b>주니어를 위한 한 줄 정리:</b> 이 도구는 두 가지를 헷갈리면 안 된다 — <b>①품질 분석</b>("확보한 데이터 안에 빈 칸이 얼마나 되나")은 지금 구현돼 있고, <b>②로딩 정합성</b>("애초에 데이터를 다 가져오긴 했나")은 아직 없다. ②가 틀리면 ①의 % 숫자 전체가 조용히 오염된다. 각 탭에서 이 구분을 표시했다.</p>
+    </div>
+
+    <div class="flow-workspace">
+      <div class="diagram-column">
+        <div class="diagram-wrap" style="margin-top:0">
+          <div class="diagram-label">전체 데이터 흐름 (run_full_analysis)</div>
+          <pre class="plantuml">
+@startuml
+skinparam backgroundColor #FAFAFA
+skinparam defaultFontSize 13
+skinparam activity {
+  BackgroundColor #FFFFFF
+  BorderColor #A23B72
+  DiamondBackgroundColor #FFF3E0
+}
+
+start
+:load_data_from_db()
+Supabase .range() 페이지네이션
+→ self.df (DataFrame);
+note right
+  ① 로딩 정합성 검증
+  지점 (아직 없음):
+  count vs len(df),
+  id 유일성
+end note
+
+:analyze_missing_data()
+_missing_mask 로 컬럼별 결측 집계
+→ missing_pct / completeness;
+note right
+  ② 품질 분석
+  (구현됨)
+end note
+
+:create_missing_data_heatmap()
+필드별 결측 히트맵 + 막대
+→ data_quality_heatmap.png;
+
+:generate_recommendations()
+임계값(50/20/10%)으로
+CRITICAL / HIGH / MEDIUM 분류;
+
+:save_analysis_report()
+history.csv 에 이번 실행 append;
+
+:compare_with_previous()
+직전 실행 대비 변화 출력
+(판단·경고는 아직 없음);
+
+:visualize_timeseries()
+추이 그래프
+→ data_quality_timeseries.png;
+stop
+@enduml
+          </pre>
+        </div>
+      </div>
+      <aside class="swagger-side">
+        <div class="endpoint-tabs" role="tablist" data-dag="dq">
+          <button class="endpoint-tab active" data-pipeline-task="dq-load">load_data_from_db</button>
+          <button class="endpoint-tab" data-pipeline-task="dq-analyze">analyze_missing_data</button>
+          <button class="endpoint-tab" data-pipeline-task="dq-heatmap">create_missing_data_heatmap</button>
+          <button class="endpoint-tab" data-pipeline-task="dq-recommend">generate_recommendations</button>
+          <button class="endpoint-tab" data-pipeline-task="dq-timeseries">save + timeseries</button>
+        </div>
+        <div data-dag-panel="dq">
+
+          <!-- dq-load -->
+          <div class="pipeline-task-detail active" data-task-detail="dq-load">
+            <p class="swagger-title" style="margin:0 0 10px">load_data_from_db()</p>
+            <table>
+              <thead><tr><th>방향</th><th>대상</th><th>내용</th></tr></thead>
+              <tbody>
+                <tr><td>1) READ</td><td><code>allthatjazz_raw</code> (count)</td><td><code>select('id', count='exact')</code> → <code>total_count</code> (배치 크기 결정용)</td></tr>
+                <tr><td>2) READ (반복)</td><td><code>allthatjazz_raw</code></td><td><code>select('*').range(offset, offset+batch-1)</code> — 응답이 batch보다 작아질 때까지 반복</td></tr>
+                <tr><td>OUT</td><td><code>self.df</code></td><td>모든 배치를 이어붙인 <code>pd.DataFrame(all_data)</code></td></tr>
+              </tbody>
+            </table>
+            <p style="margin:10px 0 0;font-size:13px;color:#5f6b7a;"><b>동적 배치 크기:</b> <code>total_count</code> ≤100 → 100씩, ≤1000 → 500씩, 그 외 → 1000씩(Supabase API 최대 limit). <code>.range(a, b)</code>는 양끝 포함이라 끝값이 <code>offset+batch-1</code>이다.</p>
+            <div style="margin-top:12px;padding:10px 12px;background:#fdecef;border:1px solid #f2c4d1;border-radius:8px;">
+              <p style="margin:0 0 6px;font-size:12px;font-weight:700;color:#a2334e;">⚠ 여기에 로딩 정합성 검증이 없다 (리뷰 지적)</p>
+              <p style="margin:0;font-size:12px;color:#7a4a56;"><code>total_count</code>를 구해놓고 <code>len(self.df)</code>와 대조하지 않는다. 로딩이 중간에 덜 되면 조용히 적은 개수로 분석이 진행되고, 완성도 %의 분모(<code>total_records</code>)가 틀어진다. 또 <code>.range()</code> 페이지네이션에 <code>ORDER BY</code>가 없어(크롤러가 동시에 insert 중이면) 페이지 경계에서 row 중복/누락이 가능한데 <code>id</code> 유일성 체크도 없다.</p>
+            </div>
+            <div class="api-card-body" style="margin-top:12px;font-size:11px;">response = self.supabase.table(TABLE_NAME)\
+    .select('*')\
+    .range(offset, offset + batch_size - 1)\
+    .execute()
+
+if not response.data:
+    break
+all_data.extend(response.data)
+if len(response.data) &lt; batch_size:   # 마지막 배치
+    break
+offset += batch_size
+
+self.df = pd.DataFrame(all_data)
+# ← 여기서 len(self.df) == total_count 대조가 없음</div>
+          </div>
+
+          <!-- dq-analyze -->
+          <div class="pipeline-task-detail" data-task-detail="dq-analyze">
+            <p class="swagger-title" style="margin:0 0 10px">analyze_missing_data()</p>
+            <p style="margin:0 0 10px;font-size:13px;color:#5f6b7a;">이 스크립트의 <b>핵심 로직</b>. 컬럼마다 <code>_missing_mask()</code>로 "결측으로 간주할 값"을 True/False 마스크로 만들고, 그 합으로 결측 개수를 센다. NULL만 세지 않는 게 포인트 — 문자열 컬럼은 아래 5가지를 모두 결측으로 본다.</p>
+            <table>
+              <thead><tr><th>결측으로 판정하는 값</th><th>이유</th></tr></thead>
+              <tbody>
+                <tr><td><code>None</code> / <code>NaN</code></td><td>진짜 빈 값</td></tr>
+                <tr><td><code>''</code> · 공백만 있는 문자열</td><td>크롤러가 빈 텍스트를 저장한 경우</td></tr>
+                <tr><td><code>'nan'</code> (문자열)</td><td>NaN이 문자열로 굳어 저장된 경우</td></tr>
+                <tr><td><code>'null'</code> (대소문자 무관)</td><td>JSON null이 문자열로 들어온 경우</td></tr>
+                <tr><td><code>'{}'</code></td><td>빈 JSON 객체 — <code>album_info</code> 등에서 흔함</td></tr>
+              </tbody>
+            </table>
+            <p style="margin:10px 0 0;font-size:13px;color:#5f6b7a;"><b>산출물:</b> <code>missing_pct</code>(필드별 결측률), <code>completeness = 100 - missing_pct</code>, <code>overall_quality = completeness.mean()</code>. 완성도 등급은 <code>COMPLETENESS_EXCELLENT/GOOD/POOR</code>(90/70/50) 상수로 판정한다.</p>
+            <div class="api-card-body" style="margin-top:12px;font-size:11px;">def _missing_mask(self, series):
+    mask = series.isnull()
+    if is_object_dtype(series) or is_string_dtype(series):
+        s = series.astype(str)
+        stripped = s.str.strip()
+        mask |= (stripped == '')            # 빈/공백 문자열
+        mask |= (s == 'nan')                # 'nan' 문자열
+        mask |= (s.str.lower() == 'null')   # 'null' 문자열
+        mask |= (stripped == '{}')          # 빈 JSON
+    return mask
+
+missing_stats = {c: self._missing_mask(self.df[c]).sum()
+                 for c in self.df.columns}
+missing_pct   = missing_stats / total_records * 100
+completeness  = 100 - missing_pct</div>
+          </div>
+
+          <!-- dq-heatmap -->
+          <div class="pipeline-task-detail" data-task-detail="dq-heatmap">
+            <p class="swagger-title" style="margin:0 0 10px">create_missing_data_heatmap()</p>
+            <p style="margin:0 0 10px;font-size:13px;color:#5f6b7a;"><code>analyze_missing_data()</code>의 결과를 4개 서브플롯으로 그려 <code>data_quality_heatmap.png</code>로 저장한다.</p>
+            <table>
+              <thead><tr><th>서브플롯</th><th>보여주는 것</th></tr></thead>
+              <tbody>
+                <tr><td>① 히트맵</td><td>레코드×필드 격자. 노랑=결측, 보라=존재. 어느 행(레코드)의 어느 칸이 비었는지 한눈에.</td></tr>
+                <tr><td>② 필드별 결측률 막대</td><td>결측률에 따라 색: &gt;50% 빨강, &gt;20% 주황, &gt;10% 노랑, 그 외 초록 (<code>MISSING_*</code> 상수)</td></tr>
+                <tr><td>③ 필드별 완성도 막대</td><td>≥90% 초록, ≥70% 주황, 그 외 빨강 (<code>COMPLETENESS_*</code> 상수)</td></tr>
+                <tr><td>④ 전체 품질 점수</td><td><code>overall_quality</code> 한 개 막대 + Excellent/Good/Poor/Critical 등급</td></tr>
+              </tbody>
+            </table>
+            <p style="margin:10px 0 0;font-size:13px;color:#5f6b7a;"><b>왜 이진 컬러맵인가:</b> 결측 여부는 0/1 두 값뿐이라 <code>ListedColormap(['#8B00FF','#FFFF00'])</code>로 명확히 구분한다. 연속 컬러맵을 쓰면 중간색이 생겨 "반쯤 결측" 같은 오해를 준다.</p>
+          </div>
+
+          <!-- dq-recommend -->
+          <div class="pipeline-task-detail" data-task-detail="dq-recommend">
+            <p class="swagger-title" style="margin:0 0 10px">generate_recommendations()</p>
+            <p style="margin:0 0 10px;font-size:13px;color:#5f6b7a;">결측률을 임계값으로 잘라 "어느 필드부터 보충해야 하나"를 우선순위로 출력한다. 판단 기준이 코드 상단 상수로 분리돼 있어 팀이 합의로 조정할 수 있다.</p>
+            <table>
+              <thead><tr><th>등급</th><th>조건 (missing_pct)</th><th>의미</th></tr></thead>
+              <tbody>
+                <tr><td>🔴 CRITICAL</td><td>&gt; 50% (<code>MISSING_CRITICAL</code>)</td><td>즉시 보충</td></tr>
+                <tr><td>🟠 HIGH</td><td>20~50% (<code>MISSING_HIGH</code>)</td><td>우선 보충</td></tr>
+                <tr><td>🟡 MEDIUM</td><td>10~20% (<code>MISSING_MEDIUM</code>)</td><td>점진적 개선</td></tr>
+                <tr><td>🟢 EXCELLENT</td><td>완성도 ≥ 95% (<code>COMPLETENESS_TOP</code>)</td><td>우수 — 손 안 대도 됨</td></tr>
+              </tbody>
+            </table>
+            <p style="margin:10px 0 0;font-size:13px;color:#5f6b7a;"><b>주의:</b> 이 등급은 전부 <b>②품질 분석</b> 결과에 기반한다. 로딩이 덜 됐다면(=①이 틀렸다면) 여기 "CRITICAL 0건"이 나와도 안심할 수 없다.</p>
+          </div>
+
+          <!-- dq-timeseries -->
+          <div class="pipeline-task-detail" data-task-detail="dq-timeseries">
+            <p class="swagger-title" style="margin:0 0 10px">save_analysis_report() + visualize_timeseries()</p>
+            <table>
+              <thead><tr><th>방향</th><th>대상</th><th>내용</th></tr></thead>
+              <tbody>
+                <tr><td>APPEND</td><td><code>data_quality_history.csv</code></td><td>이번 실행 한 행: <code>date</code>, <code>total_records</code>, <code>overall_quality</code>, 필드별 <code>*_completeness</code> / <code>*_missing_pct</code></td></tr>
+                <tr><td>READ</td><td>같은 CSV</td><td><code>compare_with_previous()</code> — 최근 2행 비교, 개선/악화 필드 top5 출력</td></tr>
+                <tr><td>OUT</td><td><code>data_quality_timeseries.png</code></td><td>품질 추이 · 레코드 수 추이 · 필드별 변화량 막대</td></tr>
+              </tbody>
+            </table>
+            <p style="margin:10px 0 0;font-size:13px;color:#5f6b7a;"><b>실행할 때마다 한 행씩 쌓이는 append-only 로그</b>라서, 파이프라인을 돌릴수록 품질이 오르는지 내리는지 추세가 보인다.</p>
+            <div style="margin-top:12px;padding:10px 12px;background:#fdecef;border:1px solid #f2c4d1;border-radius:8px;">
+              <p style="margin:0 0 6px;font-size:12px;font-weight:700;color:#a2334e;">⚠ 급변 감지가 없다 (리뷰 지적 — 결정 보류 중)</p>
+              <p style="margin:0;font-size:12px;color:#7a4a56;"><code>compare_with_previous()</code>는 "레코드 수 −500개" 처럼 변화를 <b>보여주기만</b> 하고 경고 임계치가 없다. 크롤링 실패나 테이블 truncate로 레코드가 급감해도 그냥 숫자로 찍히고 끝난다. 이 급변 경고를 <code>compare_with_previous()</code>에 넣을지 로드 검증에 넣을지는 <b>나중에 다시 검토</b>하기로 했다.</p>
+            </div>
+          </div>
+
+        </div>
+      </aside>
+    </div>
+
+    <table>
+      <thead><tr><th>구성요소</th><th>역할</th><th>핵심 계약</th></tr></thead>
+      <tbody>
+        <tr><td>load_data_from_db</td><td>전체 raw를 페이지네이션으로 DataFrame에 적재</td><td>현재 로딩 정합성(count 대조·id 유일성) 미검증 — <b>개선 후보</b></td></tr>
+        <tr><td>analyze_missing_data</td><td>컬럼별 결측 판정 → 완성도 % 산출</td><td>NULL뿐 아니라 <code>''</code>·<code>'nan'</code>·<code>'null'</code>·<code>{}</code>도 결측으로 간주</td></tr>
+        <tr><td>create_missing_data_heatmap</td><td>결측/완성도 4-서브플롯 PNG 생성</td><td>임계 상수(<code>MISSING_*</code>/<code>COMPLETENESS_*</code>)로 색 결정</td></tr>
+        <tr><td>generate_recommendations</td><td>결측률 임계값으로 보충 우선순위 분류</td><td>②품질 분석 결과에 의존 — ①로딩이 틀리면 무의미</td></tr>
+        <tr><td>save + timeseries</td><td>history.csv append + 추이 시각화</td><td>급변 경고 임계치 없음 — <b>개선 보류 중</b></td></tr>
       </tbody>
     </table>
   </div>
