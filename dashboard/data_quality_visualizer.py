@@ -369,7 +369,7 @@ class DataQualityVisualizer:
     
     def generate_recommendations(self):
         """데이터 보충 권장사항 생성"""
-        if self.analysis_results is None:
+        if not self.analysis_results:
             print("❌ 분석 결과가 없습니다.")
             return
         
@@ -425,7 +425,7 @@ class DataQualityVisualizer:
     
     def save_analysis_report(self):
         """CSV로 시계열 데이터 저장 (변화 추적 용이)"""
-        if self.analysis_results is None:
+        if not self.analysis_results:
             print("❌ 분석 결과가 없습니다.")
             return
         
