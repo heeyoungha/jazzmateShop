@@ -11,7 +11,6 @@ import numpy as np
 from supabase import create_client
 import os
 from dotenv import load_dotenv
-import warnings
 from datetime import datetime
 # 한글 폰트 설정
 
@@ -170,8 +169,6 @@ class DataQualityVisualizer:
                 
                 missing_stats[col] = null_count + empty_string_count + whitespace_count + meaningless_values
             else:
-                empty_string_count = 0
-                whitespace_count = 0
                 missing_stats[col] = null_count
         
         missing_stats = pd.Series(missing_stats)
@@ -275,7 +272,7 @@ class DataQualityVisualizer:
         plt.xticks(range(len(missing_pct)), missing_pct.index, rotation=45, ha='right')
         
         # 색상으로 심각도 표시
-        for i, (bar, pct) in enumerate(zip(bars, missing_pct.values)):
+        for bar, pct in zip(bars, missing_pct.values):
             if pct > 50:
                 bar.set_color('red')
             elif pct > 20:
@@ -296,7 +293,7 @@ class DataQualityVisualizer:
         plt.ylim(0, 100)
         
         # 90% 이상은 초록색, 70% 이상은 노란색, 그 외는 빨간색
-        for i, (bar, pct) in enumerate(zip(bars, completeness.values)):
+        for bar, pct in zip(bars, completeness.values):
             if pct >= 90:
                 bar.set_color('green')
             elif pct >= 70:
