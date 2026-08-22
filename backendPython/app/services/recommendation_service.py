@@ -139,7 +139,8 @@ class RecommendationService:
                 with observe_recommendation_stage("rerank"):
                     candidates = await self._rerank_candidates(user_id, list(candidates))
                 logger.debug("rerank done | review_id=%s | elapsed=%.3fs", review_id, time.monotonic() - t_rerank)
-            except RepositoryError:
+            except RepositoryError as exc:
+                logger.exception("rerank RepositoryError: %s", exc)
                 terminal_status = "failed_search"
                 await self._send_failed_safely(
                     review_id,
