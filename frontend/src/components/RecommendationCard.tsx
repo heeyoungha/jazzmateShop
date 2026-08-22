@@ -44,11 +44,11 @@ export function RecommendationCard({
             )}
           </div>
         </div>
-        {recommendation.recommendationScore !== undefined && (
+        {/* {recommendation.recommendationScore !== undefined && (
           <span className="text-xs font-medium text-purple-600 bg-purple-50 px-2.5 py-1 rounded-full shrink-0">
             {(recommendation.recommendationScore * 100).toFixed(1)}% 일치
           </span>
-        )}
+        )} */}
       </div>
       <div className="flex gap-2 pl-12">
         <Sparkles className="w-4 h-4 text-yellow-400 shrink-0 mt-0.5" />
