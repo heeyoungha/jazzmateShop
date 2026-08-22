@@ -102,10 +102,11 @@ class DataQualityVisualizer:
             
             while True:
                 print(f"  📦 배치 로드 시작: offset={offset}, limit={batch_size}")
+                # range(start, end)는 양끝 포함(inclusive)이라 end는 offset+batch_size-1.
+                # limit()+offset() 조합보다 널리 지원되는 페이지네이션 API라 호환성이 낫다.
                 response = self.supabase.table(TABLE_NAME)\
                     .select('*')\
-                    .limit(batch_size)\
-                    .offset(offset)\
+                    .range(offset, offset + batch_size - 1)\
                     .execute()
                 
                 if not response.data:
