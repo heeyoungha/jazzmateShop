@@ -21,16 +21,27 @@ class DataQualityVisualizer:
     def __init__(self):
         """데이터 품질 시각화 도구 초기화"""
         load_dotenv()
-        
+
+        supabase_url = os.getenv('SUPABASE_URL')
+        supabase_key = os.getenv('SUPABASE_SERVICE_ROLE_KEY')
+
+        # env 검증: 누락된 변수를 모아 한 번에 알려준다 (설정 왕복 최소화)
+        if not supabase_url or not supabase_key:
+            missing_vars = []
+            if not supabase_url:
+                missing_vars.append('SUPABASE_URL')
+            if not supabase_key:
+                missing_vars.append('SUPABASE_SERVICE_ROLE_KEY')
+            raise EnvironmentError(
+                f"환경 변수 누락: {', '.join(missing_vars)}. .env 파일을 확인하세요."
+            )
+
         # Supabase 연결
-        self.supabase = create_client(
-            os.getenv('SUPABASE_URL'),
-            os.getenv('SUPABASE_SERVICE_ROLE_KEY')
-        )
-        
+        self.supabase = create_client(supabase_url, supabase_key)
+
         self.df = None
         self.analysis_results = {}
-        
+
         print("🔧 데이터 품질 시각화 도구 초기화 완료")
     
     def load_data_from_db(self):
