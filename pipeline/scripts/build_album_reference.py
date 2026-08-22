@@ -247,7 +247,7 @@ def find_best_match(
     """
     norm_artist = normalize(album.artist_name)
 
-    # AllAboutJazz는 앨범명에 "아티스트명: 앨범명" 형식이 많음 → 접두사 제거
+    # 크롤링 소스에서 앨범명이 "아티스트명: 앨범명" 형식인 경우 → 접두사 제거
     title = album.album_title
     if ":" in title:
         prefix, rest = title.split(":", 1)

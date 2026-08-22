@@ -6,6 +6,10 @@ services:
       dockerfile: nginx/Dockerfile
     ports:
       - "80:80"
+      - "443:443"
+    volumes:
+      - /etc/letsencrypt/live/actlog.shop/fullchain.pem:/etc/nginx/ssl/fullchain.pem:ro
+      - /etc/letsencrypt/live/actlog.shop/privkey.pem:/etc/nginx/ssl/privkey.pem:ro
     depends_on:
       - java-backend
       - ai-api
@@ -19,7 +23,7 @@ services:
     expose:
       - "8080"
     env_file:
-      - ${BACKEND_ENV_FILE:-.env.example}
+      - .env
     environment:
       SPRING_PROFILES_ACTIVE: production
       AI_SERVICE_URL: ${AI_SERVICE_URL:-http://ai-api:8000}
@@ -34,7 +38,7 @@ services:
     expose:
       - "8000"
     env_file:
-      - ${AI_ENV_FILE:-.env.example}
+      - .env
     environment:
       SPRING_BASE_URL: ${SPRING_BASE_URL:-http://java-backend:8080}
     restart: unless-stopped

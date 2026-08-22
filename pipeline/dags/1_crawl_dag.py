@@ -192,7 +192,7 @@ def crawl_dag():
 
     @task(
         task_id='crawl_details',
-        execution_timeout=timedelta(hours=1), # 2시간 초과 시 Task 강제 종료
+        execution_timeout=timedelta(hours=1), # 1시간 초과 시 Task 강제 종료
         retries=2,  # Airflow가 재시도
         retry_delay=timedelta(minutes=5), # 재시도 전 5분 대기
     )
