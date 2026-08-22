@@ -104,8 +104,12 @@ class DataQualityVisualizer:
                 print(f"  📦 배치 로드 시작: offset={offset}, limit={batch_size}")
                 # range(start, end)는 양끝 포함(inclusive)이라 end는 offset+batch_size-1.
                 # limit()+offset() 조합보다 널리 지원되는 페이지네이션 API라 호환성이 낫다.
+                # order('id') 필수: PostgREST는 정렬 없이 range/offset을 쓰면 페이지 간
+                # row 순서를 보장하지 않는다. 크롤러가 동시에 insert 중이면 페이지 경계에서
+                # row가 중복되거나 누락될 수 있어, 안정 정렬 키로 id를 지정한다.
                 response = self.supabase.table(TABLE_NAME)\
                     .select('*')\
+                    .order('id')\
                     .range(offset, offset + batch_size - 1)\
                     .execute()
                 
@@ -127,9 +131,9 @@ class DataQualityVisualizer:
             
             self.df = pd.DataFrame(all_data)
             print(f"✅ 총 {len(self.df)}개 레코드 로드 완료")
-            
+
             return self.df
-            
+
         except Exception as e:
             print(f"❌ 데이터 로드 실패: {e}")
             return None
