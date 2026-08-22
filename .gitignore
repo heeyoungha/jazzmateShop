@@ -23,3 +23,10 @@ data/
 
 # load test results
 load-tests/results/
+
+# 개선/학습 정리 문서 (개인 노트)
+docs/개선/
+
+# 개인키 / 인증서 (절대 커밋 금지)
+*.pem
+*.key
