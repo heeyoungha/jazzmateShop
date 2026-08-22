@@ -17,6 +17,28 @@ from datetime import datetime
 plt.rcParams['font.family'] = 'AppleGothic'
 plt.rcParams['axes.unicode_minus'] = False
 
+# ── 설정 상수 ────────────────────────────────────────────
+# 대상 테이블
+TABLE_NAME = 'allthatjazz_raw'
+
+# 출력 파일명
+HEATMAP_FILE = 'data_quality_heatmap.png'
+TIMESERIES_FILE = 'data_quality_timeseries.png'
+HISTORY_CSV = 'data_quality_history.csv'
+
+# 완성도(completeness) 등급 임계값 — 높을수록 좋음, "이상(>=)"으로 판정
+#   completeness = 100 - missing_pct 이므로 누락률 임계값과 짝을 이룬다
+COMPLETENESS_EXCELLENT = 90   # 90% 이상: 우수
+COMPLETENESS_GOOD = 70        # 70% 이상: 보통/양호
+COMPLETENESS_POOR = 50        # 50% 이상: 개선필요 (미만은 심각)
+COMPLETENESS_TOP = 95         # 95% 이상: 최상위(권장사항용)
+
+# 누락률(missing_pct) 우선순위 임계값 — 낮을수록 좋음, "초과(>)"로 판정
+MISSING_CRITICAL = 50   # 50% 초과: 즉시 보충
+MISSING_HIGH = 20       # 20% 초과: 우선 보충
+MISSING_MEDIUM = 10     # 10% 초과: 점진적 개선
+# ─────────────────────────────────────────────────────────
+
 class DataQualityVisualizer:
     def __init__(self):
         """데이터 품질 시각화 도구 초기화"""
@@ -50,7 +72,7 @@ class DataQualityVisualizer:
         
         try:
             # 총 레코드 수 확인
-            count_response = self.supabase.table('allthatjazz_raw')\
+            count_response = self.supabase.table(TABLE_NAME)\
                 .select('id', count='exact')\
                 .execute()
             
@@ -80,7 +102,7 @@ class DataQualityVisualizer:
             
             while True:
                 print(f"  📦 배치 로드 시작: offset={offset}, limit={batch_size}")
-                response = self.supabase.table('allthatjazz_raw')\
+                response = self.supabase.table(TABLE_NAME)\
                     .select('*')\
                     .limit(batch_size)\
                     .offset(offset)\
@@ -212,11 +234,11 @@ class DataQualityVisualizer:
             completeness_pct = completeness[col]
             
             # 품질 등급 결정
-            if completeness_pct >= 90:
+            if completeness_pct >= COMPLETENESS_EXCELLENT:
                 quality_grade = "🟢 우수"
-            elif completeness_pct >= 70:
+            elif completeness_pct >= COMPLETENESS_GOOD:
                 quality_grade = "🟡 보통"
-            elif completeness_pct >= 50:
+            elif completeness_pct >= COMPLETENESS_POOR:
                 quality_grade = "🟠 개선필요"
             else:
                 quality_grade = "🔴 심각"
@@ -284,11 +306,11 @@ class DataQualityVisualizer:
         
         # 색상으로 심각도 표시
         for bar, pct in zip(bars, missing_pct.values):
-            if pct > 50:
+            if pct > MISSING_CRITICAL:
                 bar.set_color('red')
-            elif pct > 20:
+            elif pct > MISSING_HIGH:
                 bar.set_color('orange')
-            elif pct > 10:
+            elif pct > MISSING_MEDIUM:
                 bar.set_color('yellow')
             else:
                 bar.set_color('green')
@@ -305,9 +327,9 @@ class DataQualityVisualizer:
         
         # 90% 이상은 초록색, 70% 이상은 노란색, 그 외는 빨간색
         for bar, pct in zip(bars, completeness.values):
-            if pct >= 90:
+            if pct >= COMPLETENESS_EXCELLENT:
                 bar.set_color('green')
-            elif pct >= 70:
+            elif pct >= COMPLETENESS_GOOD:
                 bar.set_color('orange')
             else:
                 bar.set_color('red')
@@ -317,13 +339,13 @@ class DataQualityVisualizer:
         overall_quality = self.analysis_results['overall_quality']
         
         # 품질 등급별 색상
-        if overall_quality >= 90:
+        if overall_quality >= COMPLETENESS_EXCELLENT:
             color = 'green'
             grade = 'Excellent'
-        elif overall_quality >= 70:
+        elif overall_quality >= COMPLETENESS_GOOD:
             color = 'orange'
             grade = 'Good'
-        elif overall_quality >= 50:
+        elif overall_quality >= COMPLETENESS_POOR:
             color = 'red'
             grade = 'Poor'
         else:
@@ -340,9 +362,9 @@ class DataQualityVisualizer:
         plt.text(0, overall_quality + 2, f'{grade}', ha='center', fontweight='bold', fontsize=10)
         
         plt.tight_layout()
-        plt.savefig('data_quality_heatmap.png', dpi=300, bbox_inches='tight')
-        
-        print("✅ 히트맵 저장 완료: data_quality_heatmap.png")
+        plt.savefig(HEATMAP_FILE, dpi=300, bbox_inches='tight')
+
+        print(f"✅ 히트맵 저장 완료: {HEATMAP_FILE}")
         plt.show()
     
     def generate_recommendations(self):
@@ -358,9 +380,9 @@ class DataQualityVisualizer:
         completeness = self.analysis_results['completeness']
         
         # 우선순위별 분류
-        critical_fields = missing_pct[missing_pct > 50].index.tolist()
-        high_priority_fields = missing_pct[(missing_pct > 20) & (missing_pct <= 50)].index.tolist()
-        medium_priority_fields = missing_pct[(missing_pct > 10) & (missing_pct <= 20)].index.tolist()
+        critical_fields = missing_pct[missing_pct > MISSING_CRITICAL].index.tolist()
+        high_priority_fields = missing_pct[(missing_pct > MISSING_HIGH) & (missing_pct <= MISSING_CRITICAL)].index.tolist()
+        medium_priority_fields = missing_pct[(missing_pct > MISSING_MEDIUM) & (missing_pct <= MISSING_HIGH)].index.tolist()
         
         if critical_fields:
             print("🔴 CRITICAL (50% 이상 누락) - 즉시 보충 필요:")
@@ -381,9 +403,9 @@ class DataQualityVisualizer:
                 print(f"   • {field}: {pct:.1f}% 누락")
         
         # 완성도가 높은 필드들
-        excellent_fields = completeness[completeness >= 95].index.tolist()
+        excellent_fields = completeness[completeness >= COMPLETENESS_TOP].index.tolist()
         if excellent_fields:
-            print(f"\n🟢 EXCELLENT (95% 이상 완성) - 우수한 데이터 품질:")
+            print(f"\n🟢 EXCELLENT ({COMPLETENESS_TOP}% 이상 완성) - 우수한 데이터 품질:")
             for field in excellent_fields:
                 pct = completeness[field]
                 print(f"   • {field}: {pct:.1f}% 완성")
@@ -392,11 +414,11 @@ class DataQualityVisualizer:
         overall_quality = self.analysis_results['overall_quality']
         print(f"\n📊 전체 데이터 품질: {overall_quality:.1f}%")
         
-        if overall_quality >= 90:
+        if overall_quality >= COMPLETENESS_EXCELLENT:
             print("🎉 데이터 품질이 우수합니다! 추가 보충이 필요하지 않습니다.")
-        elif overall_quality >= 70:
+        elif overall_quality >= COMPLETENESS_GOOD:
             print("✅ 데이터 품질이 양호합니다. 일부 필드만 보충하면 됩니다.")
-        elif overall_quality >= 50:
+        elif overall_quality >= COMPLETENESS_POOR:
             print("⚠️ 데이터 품질이 보통입니다. 우선순위 필드부터 보충하세요.")
         else:
             print("🚨 데이터 품질이 심각합니다! 전체적인 데이터 수집 개선이 필요합니다.")
@@ -412,7 +434,7 @@ class DataQualityVisualizer:
         date_str = now.strftime('%Y-%m-%d')
         
         # CSV로 시계열 데이터 저장
-        csv_history_file = 'data_quality_history.csv'
+        csv_history_file = HISTORY_CSV
         
         # CSV 행 데이터 생성
         csv_row = {
@@ -449,7 +471,7 @@ class DataQualityVisualizer:
     
     def compare_with_previous(self):
         """이전 분석 결과와 비교하여 개선 정도 표시"""
-        history_file = 'data_quality_history.csv'
+        history_file = HISTORY_CSV
         
         if not os.path.exists(history_file):
             print("📊 이전 분석 결과가 없어 비교를 건너뜁니다.")
@@ -528,7 +550,7 @@ class DataQualityVisualizer:
     
     def visualize_timeseries(self):
         """CSV 히스토리 파일을 기반으로 시계열 시각화"""
-        history_file = 'data_quality_history.csv'
+        history_file = HISTORY_CSV
         
         if not os.path.exists(history_file):
             print("❌ 시계열 히스토리 파일이 없습니다. 먼저 분석을 실행하세요.")
@@ -638,9 +660,9 @@ class DataQualityVisualizer:
             
             plt.tight_layout()
             plt.subplots_adjust(bottom=0.15)  # 통계 요약 공간 확보
-            plt.savefig('data_quality_timeseries.png', dpi=300, bbox_inches='tight')
+            plt.savefig(TIMESERIES_FILE, dpi=300, bbox_inches='tight')
             plt.close()
-            print("✅ 시계열 시각화 저장 완료: data_quality_timeseries.png")
+            print(f"✅ 시계열 시각화 저장 완료: {TIMESERIES_FILE}")
             
         except Exception as e:
             print(f"❌ 시계열 시각화 생성 중 오류: {e}")
@@ -707,9 +729,9 @@ class DataQualityVisualizer:
         
         print("\n🎉 데이터 품질 분석 완료!")
         print("\n📁 생성된 파일:")
-        print("   • data_quality_heatmap.png (히트맵)")
-        print("   • data_quality_timeseries.png (시계열 추이)")
-        print("   • data_quality_history.csv (시계열 히스토리)")
+        print(f"   • {HEATMAP_FILE} (히트맵)")
+        print(f"   • {TIMESERIES_FILE} (시계열 추이)")
+        print(f"   • {HISTORY_CSV} (시계열 히스토리)")
 
 def main():
     """메인 실행 함수"""
