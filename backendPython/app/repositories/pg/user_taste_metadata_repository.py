@@ -12,7 +12,7 @@ class PgUserTasteMetadataRepository:
             SELECT DISTINCT ON (ma.gid)
                 ma.gid::text          AS album_id,
                 ma.artist_name,
-                ma.genres::text       AS genres,
+                array_to_json(ma.genres)::text AS genres,
                 ma.first_release_year
             FROM user_reviews ur
             JOIN mb_album ma ON ma.gid = ur.mb_album_gid

@@ -116,6 +116,7 @@ async def create_pg_pool():
         dsn=settings.DATABASE_URL,
         min_size=10,
         max_size=settings.DATABASE_POOL_SIZE,
+        statement_cache_size=0,
         init=_init_conn,
     )
 

@@ -15,7 +15,7 @@ class PgAlbumMetadataRepository:
                 ar.id::text                  AS reference_id,
                 ma.gid::text                 AS album_id,
                 ma.artist_name,
-                ma.genres::text              AS genres,
+                array_to_json(ma.genres)::text AS genres,
                 ma.first_release_year
             FROM album_reference ar
             JOIN mb_album ma ON ma.gid = ar.mb_release_group_id
