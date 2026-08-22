@@ -132,7 +132,24 @@ class DataQualityVisualizer:
         except Exception as e:
             print(f"❌ 데이터 로드 실패: {e}")
             return None
-    
+
+    def _missing_mask(self, series):
+        """한 컬럼(Series)에 대해 '결측으로 간주할 값'의 불리언 마스크 반환."""
+        # None/NaN 여부에서 출발 (값마다 True/False)
+        mask = series.isnull()
+
+        # 문자열 컬럼일 때만 문자열 기반 결측 기준을 OR로 누적.
+        # object / str(StringDtype) 양쪽을 모두 잡아야 pandas 버전에 무관하게 동작한다.
+        if pd.api.types.is_object_dtype(series) or pd.api.types.is_string_dtype(series):
+            col_str = series.astype(str)
+            stripped = col_str.str.strip()
+            mask |= (stripped == '')                  # 빈 문자열 + 공백만 있는 문자열
+            mask |= (col_str == 'nan')                # 'nan' 문자열
+            mask |= (col_str.str.lower() == 'null')   # 'null' 문자열
+            mask |= (stripped == '{}')                # 빈 JSON
+
+        return mask
+
     def analyze_missing_data(self):
         """누락 데이터 분석"""
         if self.df is None:
@@ -177,33 +194,11 @@ class DataQualityVisualizer:
             if len(valid_data) > 0:
                 print(f"   - 유효한 데이터 샘플: {valid_data.iloc[0][:100]}...")
         
-        # 누락 데이터 계산 (None + 빈 문자열 + 공백만 있는 문자열 + 의미없는 값)
-        missing_stats = {}
-        for col in self.df.columns:
-            # None 값
-            null_count = self.df[col].isnull().sum()
-            
-            # 문자열 타입인 경우 더 정확한 체크
-            if self.df[col].dtype == 'object':
-                col_str = self.df[col].astype(str)
-                
-                # 빈 문자열
-                empty_string_count = (self.df[col] == '').sum()
-                
-                # 공백만 있는 문자열 (strip 후 빈 문자열)
-                whitespace_count = (col_str.str.strip() == '').sum() - empty_string_count
-                
-                # 의미없는 값들 (nan 문자열, null 문자열, 빈 JSON 등)
-                meaningless_values = (
-                    (col_str == 'nan').sum() +
-                    (col_str.str.lower() == 'null').sum() +
-                    (col_str.str.strip() == '{}').sum()
-                )
-                
-                missing_stats[col] = null_count + empty_string_count + whitespace_count + meaningless_values
-            else:
-                missing_stats[col] = null_count
-        
+        # 누락 데이터 계산 — 값마다 결측 여부를 마스크로 판정 후 개수 집계.
+        missing_stats = {
+            col: self._missing_mask(self.df[col]).sum()
+            for col in self.df.columns
+        }
         missing_stats = pd.Series(missing_stats)
         missing_pct = (missing_stats / total_records) * 100
         
@@ -260,21 +255,12 @@ class DataQualityVisualizer:
         # 서브플롯 1: 누락 데이터 히트맵
         plt.subplot(2, 2, 1)
         
-        # 누락 데이터 마스크 생성 (개선된 로직 사용)
-        missing_mask = self.df.isnull().copy()
-        for col in self.df.columns:
-            if self.df[col].dtype == 'object':
-                col_str = self.df[col].astype(str)
-                # 빈 문자열, 공백만 있는 문자열, 의미없는 값 모두 체크
-                meaningless_mask = (
-                    (self.df[col] == '') |
-                    (col_str.str.strip() == '') |
-                    (col_str == 'nan') |
-                    (col_str.str.lower() == 'null') |
-                    (col_str.str.strip() == '{}')
-                )
-                missing_mask[col] = missing_mask[col] | meaningless_mask
-        
+        # 누락 데이터 마스크 생성 
+        missing_mask = pd.DataFrame({
+            col: self._missing_mask(self.df[col])
+            for col in self.df.columns
+        })
+
         # 이진 데이터에 적합한 컬러맵 사용 (노란색=누락, 보라색=존재)
         colors = ['#8B00FF', '#FFFF00']  # 보라색(존재=0), 노란색(누락=1)
         cmap = ListedColormap(colors)
