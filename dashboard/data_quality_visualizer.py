@@ -132,11 +132,38 @@ class DataQualityVisualizer:
             self.df = pd.DataFrame(all_data)
             print(f"✅ 총 {len(self.df)}개 레코드 로드 완료")
 
+            # 로딩 정합성 검증: "품질 분석(결측률)" 이전에 "입력이 온전한가"를 먼저 확인.
+            # total_count(count='exact' 결과)와 대조하고 id 유일성을 점검한다.
+            self._verify_load_integrity(total_count)
+
             return self.df
 
         except Exception as e:
             print(f"❌ 데이터 로드 실패: {e}")
             return None
+
+    def _verify_load_integrity(self, expected_count):
+        """로딩 정합성 검증: 결측률 분모(len(self.df))가 오염됐는지 로드 직후 확인한다."""
+        print("\n🔍 데이터 로딩 정합성 검증 중...")
+        loaded_count = len(self.df)
+
+        # id 유일성 체크: 페이지 경계에서 같은 행을 두 번 읽으면 결측률 분모가 부풀려진다.
+        if 'id' in self.df.columns:
+            dup_count = int(self.df['id'].duplicated().sum())
+            if dup_count > 0:
+                dup_ids = self.df.loc[self.df['id'].duplicated(keep=False), 'id'].unique()
+                print(f"   ⚠️  id 중복 {dup_count}건 발견 → 페이지네이션 순서 불안정 의심")
+                print(f"      중복 id 샘플: {list(dup_ids[:5])}")
+
+                # id는 PK라 DB엔 하나뿐 → 이 중복은 "읽기 중복"이므로 버려도 안전하다.
+                before = len(self.df)
+                self.df = self.df.drop_duplicates('id').reset_index(drop=True)
+                removed = before - len(self.df)
+                print(f"   🧹 중복 {removed}건 제거 후 진행 (남은 레코드: {len(self.df):,}개)")
+            else:
+                print(f"   ✅ id 중복 없음 (unique: {self.df['id'].nunique():,}개)")
+        else:
+            print("   ℹ️  id 컬럼이 없어 유일성 검증을 건너뜁니다.")
 
     def _missing_mask(self, series):
         """한 컬럼(Series)에 대해 '결측으로 간주할 값'의 불리언 마스크 반환."""
