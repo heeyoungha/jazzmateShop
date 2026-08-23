@@ -25,6 +25,13 @@ TABLE_NAME = 'allthatjazz_raw'
 HEATMAP_FILE = 'data_quality_heatmap.png'
 TIMESERIES_FILE = 'data_quality_timeseries.png'
 HISTORY_CSV = 'data_quality_history.csv'
+INGESTION_FILE = 'ingestion_timeline.png'  # 적재 이력(파이프라인 처리) 시각화
+
+# 적재 이력 통합 VIEW (011 마이그레이션에서 생성) — 처리 이력 축, 내용 품질 축과 별개
+INGESTION_VIEW = 'ingestion_timeline'
+
+# 파이프라인 v1→v2 경계
+PIPELINE_V2_START = '2026-02'
 
 # 완성도(completeness) 등급 임계값 — 높을수록 좋음, "이상(>=)"으로 판정
 #   completeness = 100 - missing_pct 이므로 누락률 임계값과 짝을 이룬다
@@ -587,13 +594,28 @@ class DataQualityVisualizer:
             # timestamp를 datetime으로 변환
             df_history['datetime'] = pd.to_datetime(df_history['timestamp'])
             df_history = df_history.sort_values('datetime')
-            
+
+            # v1→v2 파이프라인 재구축 경계. 이 그래프는 v1(2025)과 v2(2026~) 측정이 함께 있어,
+            # 경계선을 그으면 "품질 도약(76→92%)이 파이프라인 교체와 맞물린다"를 시각적으로 지목한다.
+            # tz 유무가 섞이면 axvline 비교가 깨지므로 관측 시각의 tz에 맞춰 경계값을 만든다.
+            v2_line = pd.Timestamp(PIPELINE_V2_START + '-01')
+            if getattr(df_history['datetime'].dt, 'tz', None) is not None:
+                v2_line = v2_line.tz_localize(df_history['datetime'].dt.tz)
+
+            def _mark_v2(label=True):
+                """현재 서브플롯에 v2 경계선을 긋는다 (시간축 서브플롯 전용)."""
+                plt.axvline(v2_line, color='#C1443C', linestyle='--', linewidth=1.5, alpha=0.7)
+                if label:
+                    ymax = plt.ylim()[1]
+                    plt.text(v2_line, ymax * 0.95, ' v2 재구축', color='#C1443C',
+                             fontsize=9, va='top', ha='left')
+
             # 전체 품질 추이 그래프
             fig = plt.figure(figsize=(20, 12))
-            
+
             # 서브플롯 1: 전체 데이터 품질 추이
             plt.subplot(2, 2, 1)
-            plt.plot(df_history['datetime'], df_history['overall_quality'], 
+            plt.plot(df_history['datetime'], df_history['overall_quality'],
                     marker='o', linewidth=2, markersize=8, color='#2E86AB')
             plt.title('Overall Data Quality Trend', fontsize=14, fontweight='bold')
             plt.xlabel('Date/Time')
@@ -601,17 +623,19 @@ class DataQualityVisualizer:
             plt.ylim(0, 100)
             plt.grid(True, alpha=0.3)
             plt.xticks(rotation=45)
-            
+            _mark_v2()
+
             # 레코드 수 추이
             plt.subplot(2, 2, 2)
-            plt.plot(df_history['datetime'], df_history['total_records'], 
+            plt.plot(df_history['datetime'], df_history['total_records'],
                     marker='s', linewidth=2, markersize=8, color='#A23B72')
             plt.title('Total Records Trend', fontsize=14, fontweight='bold')
             plt.xlabel('Date/Time')
             plt.ylabel('Number of Records')
             plt.grid(True, alpha=0.3)
             plt.xticks(rotation=45)
-            
+            _mark_v2()
+
             # 필드별 completeness 추이 (100%가 아닌 필드들만)
             completeness_cols = [col for col in df_history.columns if col.endswith('_completeness')]
             
@@ -686,7 +710,105 @@ class DataQualityVisualizer:
             print(f"❌ 시계열 시각화 생성 중 오류: {e}")
             import traceback
             traceback.print_exc()
-    
+
+    def visualize_ingestion_timeline(self):
+        """적재 이력(ingestion_timeline VIEW)을 두 관점으로 시각화한다.
+
+        - 왼쪽 = 단계 전환 깔때기(Funnel): crawl→gpt→embedding으로 몇 %가 살아남나.
+          "어느 단계에서 새는가"(병목)를 한눈에. CTO/파이프라인 건강도 관점.
+        - 오른쪽 = 월별 누적 적재 추세: 각 단계가 시간에 따라 얼마나 쌓였나.
+          "요약이 크롤을 따라오나"를 본다. 기획/데이터 볼륨 관점.
+
+        주의: 여기 수치는 '처리 성공량'이지 '내용 결측률'이 아니다.
+        내용 품질은 heatmap/timeseries(=self.df, raw 테이블) 쪽 축으로 별개다.
+        """
+        print("🚚 적재 이력 시각화 생성 중 (ingestion_timeline VIEW)...")
+
+        try:
+            # VIEW를 테이블처럼 조회 (raw 테이블 self.df와 독립 — 관심사 분리)
+            resp = self.supabase.table(INGESTION_VIEW).select('*').execute()
+            rows = resp.data if hasattr(resp, 'data') else None
+
+            if not rows:
+                print("   ℹ️  ingestion_timeline VIEW에 데이터가 없어 건너뜁니다.")
+                return
+
+            df = pd.DataFrame(rows)
+
+            # 숫자 컬럼 결측(NULL)은 0으로 — 아직 그 단계에 도달 안 한 배치는 처리량 0.
+            for col in ['crawl_success', 'gpt_ok', 'emb_ok']:
+                if col in df.columns:
+                    df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+
+            crawl_total = int(df['crawl_success'].sum())
+            gpt_total = int(df['gpt_ok'].sum())
+            emb_total = int(df['emb_ok'].sum())
+
+            fig, (ax_funnel, ax_trend) = plt.subplots(1, 2, figsize=(20, 8))
+
+            # ── 왼쪽: 단계 전환 깔때기 ──────────────────────────────
+            stages = ['crawl', 'gpt(summary)', 'embedding']
+            values = [crawl_total, gpt_total, emb_total]
+            colors = ['#2E86AB', '#A23B72', '#3B7A57']
+
+            y_pos = np.arange(len(stages))[::-1]  # 위→아래로 crawl→embed
+            ax_funnel.barh(y_pos, values, color=colors, alpha=0.85)
+            ax_funnel.set_yticks(y_pos)
+            ax_funnel.set_yticklabels(stages, fontsize=12)
+            ax_funnel.set_xlabel('Records processed', fontsize=12)
+            ax_funnel.set_title('Pipeline Stage Funnel\n(how many survive each stage)',
+                                fontsize=14, fontweight='bold')
+            ax_funnel.grid(True, alpha=0.3, axis='x')
+
+            # 각 막대에 건수 + 직전 단계 대비 전환율 표시 (병목 가독성)
+            base = crawl_total if crawl_total else 1
+            for i, (yp, val) in enumerate(zip(y_pos, values)):
+                pct = f"{100.0 * val / base:.1f}%" if i > 0 else "100%"
+                ax_funnel.text(val, yp, f'  {val:,} ({pct})',
+                               va='center', fontsize=11, fontweight='bold')
+
+            # ── 오른쪽: 월별 누적 적재 추세 ─────────────────────────
+            # to_period가 tz를 버리며 경고를 내므로 tz를 먼저 제거한 뒤 월 단위로 변환
+            df['month'] = pd.to_datetime(df['batch_created_at'], errors='coerce', utc=True) \
+                            .dt.tz_localize(None).dt.to_period('M').astype(str)
+            monthly = df.groupby('month')[['crawl_success', 'gpt_ok', 'emb_ok']] \
+                        .sum().sort_index()
+            # 누적(cumulative): "총 데이터 자산이 시간에 따라 얼마까지 쌓였나".
+            # 월별 신규량은 재적재가 있던 달만 튀어 성장 서사를 흐리므로 단조증가 곡선으로 본다.
+            cumulative = monthly.cumsum()
+
+            for col, color, label in [
+                ('crawl_success', '#2E86AB', 'crawl'),
+                ('gpt_ok', '#A23B72', 'gpt(summary)'),
+                ('emb_ok', '#3B7A57', 'embedding'),
+            ]:
+                ax_trend.plot(cumulative.index, cumulative[col], marker='o',
+                              linewidth=2, markersize=7, color=color, label=label)
+                ax_trend.fill_between(range(len(cumulative)), cumulative[col],
+                                      color=color, alpha=0.08)
+
+            # 이 그래프는 전 구간이 v2(신 파이프라인)다. 경계선은 v1이 함께 보이는
+            # CSV 시계열(visualize_timeseries)에 표시하고, 여기선 제목으로 정체만 명시한다.
+            ax_trend.set_title('Cumulative Ingestion by Stage — v2 pipeline (2026-02~)',
+                               fontsize=14, fontweight='bold')
+            ax_trend.set_xlabel('Month')
+            ax_trend.set_ylabel('Cumulative records')
+            ax_trend.grid(True, alpha=0.3)
+            ax_trend.legend(loc='center right')
+            for tick in ax_trend.get_xticklabels():
+                tick.set_rotation(45)
+
+            plt.tight_layout()
+            plt.savefig(INGESTION_FILE, dpi=300, bbox_inches='tight')
+            plt.close()
+            print(f"✅ 적재 이력 시각화 저장 완료: {INGESTION_FILE}")
+            print(f"   깔때기: crawl {crawl_total:,} → gpt {gpt_total:,} → embed {emb_total:,}")
+
+        except Exception as e:
+            print(f"❌ 적재 이력 시각화 생성 중 오류: {e}")
+            import traceback
+            traceback.print_exc()
+
     def _generate_summary_text(self, df_history, fields_to_plot):
         """통계 요약 텍스트 생성"""
         summary_lines = []
@@ -744,11 +866,15 @@ class DataQualityVisualizer:
         
         # 시계열 시각화 생성
         self.visualize_timeseries()
-        
+
+        # 적재 이력(파이프라인 처리 이력) 시각화 — 내용 품질과 별개 축
+        self.visualize_ingestion_timeline()
+
         print("\n🎉 데이터 품질 분석 완료!")
         print("\n📁 생성된 파일:")
         print(f"   • {HEATMAP_FILE} (히트맵)")
         print(f"   • {TIMESERIES_FILE} (시계열 추이)")
+        print(f"   • {INGESTION_FILE} (적재 이력: 단계 깔때기 + 월별 추세)")
         print(f"   • {HISTORY_CSV} (시계열 히스토리)")
 
 def main():
