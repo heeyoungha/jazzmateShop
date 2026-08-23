@@ -44,6 +44,10 @@ COMPLETENESS_TOP = 95         # 95% 이상: 최상위(권장사항용)
 MISSING_CRITICAL = 50   # 50% 초과: 즉시 보충
 MISSING_HIGH = 20       # 20% 초과: 우선 보충
 MISSING_MEDIUM = 10     # 10% 초과: 점진적 개선
+
+# 레코드 수 급변 탐지 임계값 — total_records는 DB 누적 개수라 정상이면 단조 증가.
+# 감소는 무조건 이상(삭제/오류)으로 보고, 급증만 아래 비율로 판정한다.
+RECORD_SPIKE_PCT = 50      # 직전 대비 +50% 초과 급증이면 이상 의심 (증가 방향 전용)
 # ─────────────────────────────────────────────────────────
 
 class DataQualityVisualizer:
@@ -544,6 +548,15 @@ class DataQualityVisualizer:
                 print(f"   이전: {previous['total_records']:,}개")
                 print(f"   현재: {latest['total_records']:,}개")
                 print(f"   변화: {records_change:+,}개")
+
+                # D: 레코드 수 이상 탐지 — total_records는 누적이라 정상이면 단조 증가.
+                # 감소는 무조건 이상(삭제/DB 오류), 급증은 직전 대비 비율로 판정.
+                if records_change < 0:
+                    print(f"   ⚠️  누적 레코드 감소 → 삭제/DB 오류 의심 (증가만 정상)")
+                elif previous['total_records'] > 0:
+                    pct = records_change / previous['total_records'] * 100
+                    if pct >= RECORD_SPIKE_PCT:
+                        print(f"   ⚠️  레코드 급증 +{pct:.0f}% → 중복 대량 삽입/크롤러 폭주 점검 필요")
             
             # 필드별 개선도 확인
             print(f"\n🔍 주요 필드별 개선도:")
