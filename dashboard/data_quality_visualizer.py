@@ -154,6 +154,18 @@ class DataQualityVisualizer:
         print("\n🔍 데이터 로딩 정합성 검증 중...")
         loaded_count = len(self.df)
 
+        # count 대조: None(검증 불가)/부족(페이지 누락)=중단, 초과(insert/읽기 중복)=경고
+        if expected_count is None:
+            raise ValueError("DB count를 받지 못해 정합성을 검증할 수 없습니다 (count='exact' 실패 의심)")
+        elif loaded_count < expected_count:
+            raise ValueError(
+                f"페이지 누락 의심: DB {expected_count}개 vs 로드 {loaded_count}개"
+            )
+        elif loaded_count > expected_count:
+            print(f"   ℹ️  로드 중 insert/읽기 중복 추정: DB {expected_count}개 < 로드 {loaded_count}개 (계속 진행)")
+        else:
+            print(f"   ✅ count 일치 ({loaded_count:,}개)")
+
         # id 유일성 체크: 페이지 경계에서 같은 행을 두 번 읽으면 결측률 분모가 부풀려진다.
         if 'id' in self.df.columns:
             dup_count = int(self.df['id'].duplicated().sum())
